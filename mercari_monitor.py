@@ -437,16 +437,21 @@ COL_SOURCE = 2       # B: 仕入れ先
 COL_NAME = 3         # C: 商品名
 COL_URL = 4          # D: 仕入れ元URL
 COL_EBAY_ID = 5      # E: eBay ItemID
-COL_CHECK = 6        # F: チェック
-COL_PREV_STATUS = 7  # G: 前回ステータス
-COL_SOLD_COUNT = 8   # H: 売り切れ連続
-COL_UNKNOWN_COUNT = 9 # I: 不明連続回数
-COL_LAST_CHECK = 10  # J: 最終チェック日時
-COL_LAST_NOTIFY = 11 # K: 最終通知日時
-COL_LAST_NOTIFY_ST = 12  # L: 最終通知ステータス
-COL_HTTP_STATUS = 13 # M: 最終HTTPステータス
-COL_MEMO = 14        # N: メモ
-COL_ACTION = 15      # O: 対応要否
+COL_COST = 6         # F: 仕入金額（円）※ユーザー入力
+COL_EBAY_PRICE = 7   # G: eBay販売金額（$）※ユーザー入力
+COL_SHIPPING = 8     # H: 送料（円）※ユーザー入力
+COL_EBAY_FEE = 9     # I: eBay手数料（円）※数式
+COL_TARIFF = 10      # J: 関税（円）※数式
+COL_PROFIT = 11      # K: 利益（円）※数式
+COL_PREV_STATUS = 12 # L: 前回ステータス
+COL_SOLD_COUNT = 13  # M: 売り切れ連続
+COL_UNKNOWN_COUNT = 14 # N: 不明連続回数
+COL_LAST_CHECK = 15  # O: 最終チェック日時
+COL_LAST_NOTIFY = 16 # P: 最終通知日時
+COL_LAST_NOTIFY_ST = 17  # Q: 最終通知ステータス
+COL_HTTP_STATUS = 18 # R: 最終HTTPステータス
+COL_MEMO = 19        # S: メモ
+COL_ACTION = 20      # T: 対応要否
 
 
 def init_gspread():
@@ -617,13 +622,13 @@ def update_daichou(daichou, row_num, result):
     return status_changed
 
 
-def write_check_log(log_sheet, result, group="A"):
+def write_check_log(log_sheet, result):
     """
     チェックログシートに実行ログを追記
 
     列構成:
-    A: 実行日時 | B: 実行グループ | C: 仕入先 | D: URL
-    E: 商品名 | F: 判定結果 | G: HTTPステータス | H: ItemID | I: メモ
+    A: 実行日時 | B: 仕入先 | C: URL
+    D: 商品名 | E: 判定結果 | F: HTTPステータス | G: ItemID | H: メモ
     """
     if not log_sheet:
         return
@@ -634,14 +639,13 @@ def write_check_log(log_sheet, result, group="A"):
 
         new_row = [
             now,                                    # A: 実行日時
-            group,                                  # B: 実行グループ
-            result.get("platform", ""),             # C: 仕入先
-            result.get("url", ""),                  # D: URL
-            result.get("name", ""),                 # E: 商品名
-            result.get("status", "エラー"),          # F: 判定結果
-            http_status,                            # G: HTTPステータス
-            "",                                     # H: ItemID
-            result.get("detail", ""),               # I: メモ（判定方法・詳細）
+            result.get("platform", ""),             # B: 仕入先
+            result.get("url", ""),                  # C: URL
+            result.get("name", ""),                 # D: 商品名
+            result.get("status", "エラー"),          # E: 判定結果
+            http_status,                            # F: HTTPステータス
+            "",                                     # G: ItemID
+            result.get("detail", ""),               # H: メモ（判定方法・詳細）
         ]
 
         log_sheet.append_row(new_row, value_input_option="USER_ENTERED")
