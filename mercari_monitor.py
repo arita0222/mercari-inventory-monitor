@@ -33,22 +33,29 @@ def check_mercari_status(url):
     try:
         driver = init_driver()
         driver.get(url)
-        
         time.sleep(5)
         
-        page_source = driver.page_source
+        # 【方法2】ボタン属性で判定
+        # 購入ボタンを取得
+        button_element = driver.find_element(By.XPATH, "//button[contains(., '購入') or contains(., '売り切れ')]")
         
-        # 【修正】売り切れの判定を最初に（売り切れを優先）
-        if "売り切れました" in page_source or "SOLD" in page_source:
+        # ボタンが無効か確認
+        is_disabled = button_element.get_attribute("disabled") is not None
+        
+        # ボタンのテキストを確認
+        button_text = button_element.text
+        
+        print(f"ボタンテキスト: {button_text}, 無効: {is_disabled}")
+        
+        if "売り切れ" in button_text or is_disabled:
             return "売り切れ"
         
-        # 販売中の判定
-        if "購入手続きへ" in page_source:
+        if "購入" in button_text:
             return "販売中"
         
         return "エラー"
     except Exception as e:
-        print(f"エラー: {e}")
+        print(f"ボタン判定エラー: {e}")
         return "エラー"
     finally:
         if driver:
