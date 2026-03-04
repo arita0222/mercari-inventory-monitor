@@ -506,10 +506,16 @@ def get_urls_from_sheet(daichou):
                     source = daichou.cell(row_num, COL_SOURCE).value or ""
                 except Exception:
                     source = ""
+                # E列（eBay ItemID）も取得
+                try:
+                    ebay_id = daichou.cell(row_num, COL_EBAY_ID).value or ""
+                except Exception:
+                    ebay_id = ""
                 items.append({
                     "row_num": row_num,
                     "url": url,
                     "source": source,
+                    "ebay_id": ebay_id.strip(),
                 })
 
         logger.info(f"仕入れ台帳から {len(items)} 件のURLを取得")
@@ -663,6 +669,16 @@ def send_email(changed_items):
             body += f"プラットフォーム: {item['platform']}\n"
             body += f"判定方法: {item['method']}\n"
             body += f"検知日時: {datetime.now(JST).strftime('%Y/%m/%d %H:%M:%S')}\n"
+            # eBay ItemIDがあれば出品編集リンクを追加
+            ebay_id = item.get("ebay_id", "")
+            if ebay_id:
+                ebay_url = (
+                    f"https://www.ebay.com/lstng?mode=ReviseItem"
+                    f"&itemId={ebay_id}"
+                    f"&sr=wn"
+                    f"&ReturnURL=https%3A%2F%2Fwww.ebay.com%2Fsh%2Flst%2Factive%3Foffset%3D0"
+                )
+                body += f"\n▼ eBay出品を編集:\n{ebay_url}\n"
         body += f"\n━━━━━━━━━━━━━━━━━━━━\n"
         body += "このメールは自動送信です。"
 
@@ -710,8 +726,8 @@ def main():
         if not items:
             logger.info("シートにURLがないため、テスト用URLを使用")
             items = [
-                {"row_num": 0, "url": "https://jp.mercari.com/item/m27906409152", "source": "メルカリ"},
-                {"row_num": 0, "url": "https://jp.mercari.com/item/m78851451356", "source": "メルカリ"},
+                {"row_num": 0, "url": "https://jp.mercari.com/item/m27906409152", "source": "メルカリ", "ebay_id": ""},
+                {"row_num": 0, "url": "https://jp.mercari.com/item/m78851451356", "source": "メルカリ", "ebay_id": ""},
             ]
 
         logger.info(f"チェック対象: {len(items)} 件")
@@ -736,6 +752,7 @@ def main():
 
             # 売り切れなら毎回通知リストに追加
             if result["status"] == "売り切れ":
+                result["ebay_id"] = item.get("ebay_id", "")
                 changed_items.append(result)
 
             # チェックログに追記
