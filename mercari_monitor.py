@@ -650,9 +650,9 @@ def send_email(changed_items):
         return
 
     try:
-        subject = f"【フリマ検知】{len(changed_items)} 件が売り切れになりました"
+        subject = f"【フリマ検知】{len(changed_items)} 件が売り切れです"
 
-        body = "以下の商品が「販売中 → 売り切れ」に変わりました。\n\n"
+        body = "以下の商品が「売り切れ」です。\n\n"
         for item in changed_items:
             body += f"━━━━━━━━━━━━━━━━━━━━\n"
             body += f"商品名: {item['name']}\n"
@@ -729,9 +729,11 @@ def main():
 
             # 仕入れ台帳を更新
             if daichou and item["row_num"] > 0:
-                status_changed = update_daichou(daichou, item["row_num"], result)
-                if status_changed:
-                    changed_items.append(result)
+                update_daichou(daichou, item["row_num"], result)
+
+            # 売り切れなら毎回通知リストに追加
+            if result["status"] == "売り切れ":
+                changed_items.append(result)
 
             # チェックログに追記
             if log_sheet:
