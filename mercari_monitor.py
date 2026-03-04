@@ -34,31 +34,18 @@ def check_mercari_status(url):
         driver = init_driver()
         driver.get(url)
         
-        # ページ読み込み待機
-        time.sleep(3)
+        time.sleep(5)  # 待機時間を5秒に延長
         
-        wait = WebDriverWait(driver, 15)
+        # ページソース全体を取得
+        page_source = driver.page_source
         
-        # 【修正】「購入手続きへ」を先に探す（button要素を指定）
-        try:
-            wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(text(), '購入手続きへ')]")))
+        # 販売中の判定（「購入手続きへ」があり「売り切れました」がない）
+        if "購入手続きへ" in page_source and "売り切れました" not in page_source:
             return "販売中"
-        except:
-            pass
         
-        # 「売り切れました」を探す（button要素を指定）
-        try:
-            wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(text(), '売り切れました')]")))
+        # 売り切れの判定
+        if "売り切れました" in page_source or "SOLD" in page_source:
             return "売り切れ"
-        except:
-            pass
-        
-        # 代替案：「SOLD」の表示を検出
-        try:
-            wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'SOLD')]")))
-            return "売り切れ"
-        except:
-            pass
         
         return "エラー"
     except Exception as e:
