@@ -31,7 +31,10 @@ import logging
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+# 日本時間（JST = UTC+9）
+JST = timezone(timedelta(hours=9))
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -533,7 +536,7 @@ def update_daichou(daichou, row_num, result):
     status_changed = False
 
     try:
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
         new_status = result.get("status", "エラー")
 
         # 現在のG列（前回ステータス）を取得
@@ -614,7 +617,7 @@ def write_check_log(log_sheet, result, group="A"):
         return
 
     try:
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
         http_status = 200 if result.get("status") != "エラー" else 0
 
         new_row = [
@@ -659,7 +662,7 @@ def send_email(changed_items):
             body += f"URL: {item['url']}\n"
             body += f"プラットフォーム: {item['platform']}\n"
             body += f"判定方法: {item['method']}\n"
-            body += f"検知日時: {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}\n"
+            body += f"検知日時: {datetime.now(JST).strftime('%Y/%m/%d %H:%M:%S')}\n"
         body += f"\n━━━━━━━━━━━━━━━━━━━━\n"
         body += "このメールは自動送信です。"
 
