@@ -35,27 +35,31 @@ def check_mercari_status(url):
         driver.get(url)
         time.sleep(5)
         
-        # 【方法2】ボタン属性で判定
-        # 購入ボタンを取得
-        button_element = driver.find_element(By.XPATH, "//button[contains(., '購入') or contains(., '売り切れ')]")
+        # JavaScriptでボタンを探す
+        button_info = driver.execute_script("""
+            // すべてのボタンを取得
+            const buttons = Array.from(document.querySelectorAll('button'));
+            
+            // 各ボタンのテキストをチェック
+            for (let btn of buttons) {
+                const text = btn.textContent;
+                console.log('ボタン:', text);
+                
+                if (text.includes('売り切れました') || text.includes('SOLD')) {
+                    return {text: text, status: '売り切れ'};
+                }
+                if (text.includes('購入手続きへ') || text.includes('購入')) {
+                    return {text: text, status: '販売中'};
+                }
+            }
+            return {text: 'なし', status: 'エラー'};
+        """)
         
-        # ボタンが無効か確認
-        is_disabled = button_element.get_attribute("disabled") is not None
+        print(f"ボタン情報: {button_info}")
+        return button_info['status']
         
-        # ボタンのテキストを確認
-        button_text = button_element.text
-        
-        print(f"ボタンテキスト: {button_text}, 無効: {is_disabled}")
-        
-        if "売り切れ" in button_text or is_disabled:
-            return "売り切れ"
-        
-        if "購入" in button_text:
-            return "販売中"
-        
-        return "エラー"
     except Exception as e:
-        print(f"ボタン判定エラー: {e}")
+        print(f"判定エラー: {e}")
         return "エラー"
     finally:
         if driver:
