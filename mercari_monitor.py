@@ -417,11 +417,34 @@ def check_item_status(driver, url):
 # Google Sheets 連携
 # ============================================================
 
+# シート名の定数
+SHEET_DAICHOU = "仕入れ台帳"
+SHEET_LOG = "チェックログ"
+SHEET_SETTINGS = "設定"
+
+# 仕入れ台帳の列番号（1始まり）
+COL_ID = 1           # A: ID
+COL_SOURCE = 2       # B: 仕入れ先
+COL_NAME = 3         # C: 商品名
+COL_URL = 4          # D: 仕入れ元URL
+COL_EBAY_ID = 5      # E: eBay ItemID
+COL_CHECK = 6        # F: チェック
+COL_PREV_STATUS = 7  # G: 前回ステータス
+COL_SOLD_COUNT = 8   # H: 売り切れ連続
+COL_UNKNOWN_COUNT = 9 # I: 不明連続回数
+COL_LAST_CHECK = 10  # J: 最終チェック日時
+COL_LAST_NOTIFY = 11 # K: 最終通知日時
+COL_LAST_NOTIFY_ST = 12  # L: 最終通知ステータス
+COL_HTTP_STATUS = 13 # M: 最終HTTPステータス
+COL_MEMO = 14        # N: メモ
+COL_ACTION = 15      # O: 対応要否
+
+
 def init_gspread():
     """Google Sheets API を初期化"""
     if not SERVICE_ACCOUNT_JSON or not SPREADSHEET_ID:
         logger.warning("Google Sheets の設定がありません。スキップします。")
-        return None, None
+        return None, None, None
 
     try:
         import gspread
@@ -436,81 +459,181 @@ def init_gspread():
         ]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(creds)
-        sheet = client.open_by_key(SPREADSHEET_ID).sheet1
+        spreadsheet = client.open_by_key(SPREADSHEET_ID)
 
-        logger.info("Google Sheets 接続完了")
-        return client, sheet
+        # 仕入れ台帳シートを取得
+        daichou = spreadsheet.worksheet(SHEET_DAICHOU)
+
+        # チェックログシートを取得
+        try:
+            log_sheet = spreadsheet.worksheet(SHEET_LOG)
+        except Exception:
+            log_sheet = None
+            logger.warning("チェックログシートが見つかりません")
+
+        logger.info("Google Sheets 接続完了（仕入れ台帳）")
+        return client, daichou, log_sheet
 
     except Exception as e:
         logger.error(f"Google Sheets 接続失敗: {e}")
-        return None, None
+        return None, None, None
 
 
-def get_urls_from_sheet(sheet):
-    """スプレッドシートから商品 URL を取得"""
-    if not sheet:
+def get_urls_from_sheet(daichou):
+    """
+    仕入れ台帳シートから商品URLを取得
+    D列（仕入れ元URL）を読み込み、行番号とセットで返す
+    """
+    if not daichou:
         return []
 
     try:
-        # A列の全データを取得（ヘッダー除外）
-        urls = sheet.col_values(1)
-        if urls and urls[0].startswith("http") is False:
-            urls = urls[1:]  # ヘッダー行を除外
-        return [u.strip() for u in urls if u.strip().startswith("http")]
+        # D列（URL列）の全データを取得
+        urls_col = daichou.col_values(COL_URL)
+
+        items = []
+        for i, url in enumerate(urls_col):
+            row_num = i + 1  # 1始まり
+            if row_num == 1:
+                continue  # ヘッダー行をスキップ
+            url = url.strip() if url else ""
+            if url.startswith("http"):
+                # B列（仕入れ先）も取得
+                try:
+                    source = daichou.cell(row_num, COL_SOURCE).value or ""
+                except Exception:
+                    source = ""
+                items.append({
+                    "row_num": row_num,
+                    "url": url,
+                    "source": source,
+                })
+
+        logger.info(f"仕入れ台帳から {len(items)} 件のURLを取得")
+        return items
+
     except Exception as e:
         logger.error(f"URL 取得失敗: {e}")
         return []
 
 
-def update_sheet(sheet, row_num, result):
+def update_daichou(daichou, row_num, result):
     """
-    スプレッドシートを更新する
-    
+    仕入れ台帳シートを更新する
+
     列構成:
-    A: 商品URL
-    B: 商品名
-    C: プラットフォーム
-    D: 前回のステータス
-    E: 現在のステータス
-    F: 判定方法
-    G: ステータス（従来の列G互換）
-    H: 詳細
-    I: (空き)
-    J: 最終チェック日時
+    A: ID | B: 仕入れ先 | C: 商品名 | D: 仕入れ元URL | E: eBay ItemID
+    F: チェック | G: 前回ステータス | H: 売り切れ連続 | I: 不明連続回数
+    J: 最終チェック日時 | K: 最終通知日時 | L: 最終通知ステータス
+    M: 最終HTTPステータス | N: メモ | O: 対応要否
     """
-    if not sheet:
-        return
+    if not daichou:
+        return False
+
+    status_changed = False
 
     try:
-        now = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        new_status = result.get("status", "エラー")
 
-        # 前回のステータスを保存（G列の現在値をD列へ）
+        # 現在のG列（前回ステータス）を取得
+        prev_status = ""
         try:
-            prev_status = sheet.cell(row_num, 7).value  # G列
-            if prev_status:
-                sheet.update_cell(row_num, 4, prev_status)  # D列
+            prev_status = daichou.cell(row_num, COL_PREV_STATUS).value or ""
         except Exception:
             pass
 
-        # 各列を更新
-        updates = {
-            2: result.get("name", ""),           # B: 商品名
-            3: result.get("platform", ""),        # C: プラットフォーム
-            5: result.get("status", "エラー"),     # E: 現在のステータス
-            6: result.get("method", ""),           # F: 判定方法
-            7: result.get("status", "エラー"),     # G: ステータス（互換）
-            8: result.get("detail", ""),           # H: 詳細
-            10: now,                               # J: 最終チェック日時
-        }
+        # --- 連続回数のカウント ---
+        sold_count = 0
+        unknown_count = 0
+        try:
+            sold_count = int(daichou.cell(row_num, COL_SOLD_COUNT).value or 0)
+        except (ValueError, Exception):
+            sold_count = 0
+        try:
+            unknown_count = int(daichou.cell(row_num, COL_UNKNOWN_COUNT).value or 0)
+        except (ValueError, Exception):
+            unknown_count = 0
 
-        for col, value in updates.items():
-            if value:
-                sheet.update_cell(row_num, col, str(value)[:256])
+        if new_status == "売り切れ":
+            sold_count += 1
+            unknown_count = 0
+        elif new_status == "販売中":
+            sold_count = 0
+            unknown_count = 0
+        else:
+            # エラーや判定不能
+            unknown_count += 1
 
-        logger.info(f"行 {row_num} 更新完了: {result.get('status')}")
+        # --- 状態変化の判定 ---
+        if prev_status == "販売中" and new_status == "売り切れ":
+            status_changed = True
+
+        # --- 各列を更新 ---
+        # C: 商品名（取得できた場合のみ）
+        item_name = result.get("name", "")
+        if item_name:
+            daichou.update_cell(row_num, COL_NAME, item_name[:100])
+
+        # G: 前回ステータス → 今回のステータスで上書き
+        daichou.update_cell(row_num, COL_PREV_STATUS, new_status)
+
+        # H: 売り切れ連続回数
+        daichou.update_cell(row_num, COL_SOLD_COUNT, sold_count)
+
+        # I: 不明連続回数
+        daichou.update_cell(row_num, COL_UNKNOWN_COUNT, unknown_count)
+
+        # J: 最終チェック日時
+        daichou.update_cell(row_num, COL_LAST_CHECK, now)
+
+        # M: 最終HTTPステータス（200 = 正常アクセス）
+        http_status = 200 if new_status != "エラー" else 0
+        daichou.update_cell(row_num, COL_HTTP_STATUS, http_status)
+
+        logger.info(
+            f"行 {row_num} 更新: {new_status} "
+            f"(売切連続: {sold_count}, 不明連続: {unknown_count})"
+        )
 
     except Exception as e:
-        logger.error(f"シート更新失敗（行 {row_num}）: {e}")
+        logger.error(f"仕入れ台帳 更新失敗（行 {row_num}）: {e}")
+
+    return status_changed
+
+
+def write_check_log(log_sheet, result, group="A"):
+    """
+    チェックログシートに実行ログを追記
+
+    列構成:
+    A: 実行日時 | B: 実行グループ | C: 仕入先 | D: URL
+    E: 商品名 | F: 判定結果 | G: HTTPステータス | H: ItemID | I: メモ
+    """
+    if not log_sheet:
+        return
+
+    try:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        http_status = 200 if result.get("status") != "エラー" else 0
+
+        new_row = [
+            now,                                    # A: 実行日時
+            group,                                  # B: 実行グループ
+            result.get("platform", ""),             # C: 仕入先
+            result.get("url", ""),                  # D: URL
+            result.get("name", ""),                 # E: 商品名
+            result.get("status", "エラー"),          # F: 判定結果
+            http_status,                            # G: HTTPステータス
+            "",                                     # H: ItemID
+            result.get("detail", ""),               # I: メモ（判定方法・詳細）
+        ]
+
+        log_sheet.append_row(new_row, value_input_option="USER_ENTERED")
+        logger.info(f"チェックログ追記: {result.get('status')}")
+
+    except Exception as e:
+        logger.error(f"チェックログ書き込み失敗: {e}")
 
 
 # ============================================================
@@ -576,27 +699,27 @@ def main():
     driver = init_driver()
 
     try:
-        # Google Sheets からURL取得
-        client, sheet = init_gspread()
-        urls = get_urls_from_sheet(sheet)
+        # Google Sheets から URL 取得
+        client, daichou, log_sheet = init_gspread()
+        items = get_urls_from_sheet(daichou)
 
         # シートにURLがない場合はテスト用URLを使用
-        if not urls:
+        if not items:
             logger.info("シートにURLがないため、テスト用URLを使用")
-            urls = [
-                "https://jp.mercari.com/item/m27906409152",   # 販売中
-                "https://jp.mercari.com/item/m78851451356",   # 売り切れ
+            items = [
+                {"row_num": 0, "url": "https://jp.mercari.com/item/m27906409152", "source": "メルカリ"},
+                {"row_num": 0, "url": "https://jp.mercari.com/item/m78851451356", "source": "メルカリ"},
             ]
 
-        logger.info(f"チェック対象: {len(urls)} 件")
+        logger.info(f"チェック対象: {len(items)} 件")
 
         # 各URLをチェック
         results = []
         changed_items = []  # 販売中→売り切れに変わった商品
 
-        for i, url in enumerate(urls):
-            logger.info(f"\n--- [{i+1}/{len(urls)}] ---")
-            result = check_item_status(driver, url)
+        for i, item in enumerate(items):
+            logger.info(f"\n--- [{i+1}/{len(items)}] ---")
+            result = check_item_status(driver, item["url"])
             results.append(result)
 
             logger.info(
@@ -604,21 +727,18 @@ def main():
                 f"(方法: {result['method']}, 商品: {result['name'][:30]})"
             )
 
-            # スプレッドシート更新
-            if sheet:
-                row_num = i + 2  # ヘッダー行を考慮
-                # 前回のステータスと比較
-                try:
-                    prev_status = sheet.cell(row_num, 7).value
-                    if prev_status == "販売中" and result["status"] == "売り切れ":
-                        changed_items.append(result)
-                except Exception:
-                    pass
+            # 仕入れ台帳を更新
+            if daichou and item["row_num"] > 0:
+                status_changed = update_daichou(daichou, item["row_num"], result)
+                if status_changed:
+                    changed_items.append(result)
 
-                update_sheet(sheet, row_num, result)
+            # チェックログに追記
+            if log_sheet:
+                write_check_log(log_sheet, result)
 
             # レート制限対策
-            if i < len(urls) - 1:
+            if i < len(items) - 1:
                 time.sleep(2)
 
         # 状態変化があった場合はメール通知
