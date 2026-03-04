@@ -34,18 +34,17 @@ def check_mercari_status(url):
         driver = init_driver()
         driver.get(url)
         
-        time.sleep(5)  # 待機時間を5秒に延長
+        time.sleep(5)
         
-        # ページソース全体を取得
         page_source = driver.page_source
         
-        # 販売中の判定（「購入手続きへ」があり「売り切れました」がない）
-        if "購入手続きへ" in page_source and "売り切れました" not in page_source:
-            return "販売中"
-        
-        # 売り切れの判定
+        # 【修正】売り切れの判定を最初に（売り切れを優先）
         if "売り切れました" in page_source or "SOLD" in page_source:
             return "売り切れ"
+        
+        # 販売中の判定
+        if "購入手続きへ" in page_source:
+            return "販売中"
         
         return "エラー"
     except Exception as e:
