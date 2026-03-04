@@ -1,6 +1,7 @@
 import os
 import json
 import smtplib
+import time
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -32,17 +33,29 @@ def check_mercari_status(url):
     try:
         driver = init_driver()
         driver.get(url)
-        wait = WebDriverWait(driver, 10)
         
-        # 【正しい修正】「購入手続きへ」を先に探す（販売中の判定を優先）
+        # ページ読み込み待機
+        time.sleep(3)
+        
+        wait = WebDriverWait(driver, 15)
+        
+        # 【修正】「購入手続きへ」を先に探す（button要素を指定）
         try:
-            wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '購入手続きへ')]")))
+            wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(text(), '購入手続きへ')]")))
             return "販売中"
         except:
             pass
         
+        # 「売り切れました」を探す（button要素を指定）
         try:
-            wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '売り切れました')]")))
+            wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(text(), '売り切れました')]")))
+            return "売り切れ"
+        except:
+            pass
+        
+        # 代替案：「SOLD」の表示を検出
+        try:
+            wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'SOLD')]")))
             return "売り切れ"
         except:
             pass
