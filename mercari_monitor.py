@@ -33,30 +33,21 @@ def check_mercari_status(url):
     try:
         driver = init_driver()
         driver.get(url)
-        time.sleep(5)
+        time.sleep(8)  # 8秒待機
         
-        # JavaScriptでボタンを探す
-        button_info = driver.execute_script("""
-            // すべてのボタンを取得
-            const buttons = Array.from(document.querySelectorAll('button'));
-            
-            // 各ボタンのテキストをチェック
-            for (let btn of buttons) {
-                const text = btn.textContent;
-                console.log('ボタン:', text);
-                
-                if (text.includes('売り切れました') || text.includes('SOLD')) {
-                    return {text: text, status: '売り切れ'};
-                }
-                if (text.includes('購入手続きへ') || text.includes('購入')) {
-                    return {text: text, status: '販売中'};
-                }
-            }
-            return {text: 'なし', status: 'エラー'};
-        """)
+        # ページ全体を取得
+        page_source = driver.page_source
         
-        print(f"ボタン情報: {button_info}")
-        return button_info['status']
+        print(f"ページサイズ: {len(page_source)} 文字")
+        
+        # ページソースで検索（確実な方法）
+        if "売り切れました" in page_source:
+            return "売り切れ"
+        
+        if "購入手続きへ" in page_source:
+            return "販売中"
+        
+        return "エラー"
         
     except Exception as e:
         print(f"判定エラー: {e}")
@@ -64,7 +55,6 @@ def check_mercari_status(url):
     finally:
         if driver:
             driver.quit()
-
 def init_gspread():
     credentials = Credentials.from_service_account_file(
         SERVICE_ACCOUNT_JSON,
