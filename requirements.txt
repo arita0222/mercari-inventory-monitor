@@ -1,0 +1,4 @@
+selenium>=4.0.0
+gspread>=5.0.0
+google-auth>=2.0.0
+webdriver-manager>=4.0.0
