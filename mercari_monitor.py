@@ -34,15 +34,16 @@ def check_mercari_status(url):
         driver.get(url)
         wait = WebDriverWait(driver, 10)
         
+        # 【正しい修正】「購入手続きへ」を先に探す（販売中の判定を優先）
         try:
-            wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '売り切れました')]")))
-            return "売り切れ"
+            wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '購入手続きへ')]")))
+            return "販売中"
         except:
             pass
         
         try:
-            wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '購入手続きへ')]")))
-            return "販売中"
+            wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '売り切れました')]")))
+            return "売り切れ"
         except:
             pass
         
