@@ -42,4 +42,6 @@ jobs:
           EBAY_CERT_ID: ${{ secrets.EBAY_CERT_ID }}
           EBAY_DEV_ID: ${{ secrets.EBAY_DEV_ID }}
           EBAY_AUTH_TOKEN: ${{ secrets.EBAY_AUTH_TOKEN }}
+          LINE_CHANNEL_TOKEN: ${{ secrets.LINE_CHANNEL_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
         run: python mercari_monitor.py
