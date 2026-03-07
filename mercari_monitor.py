@@ -77,6 +77,10 @@ EBAY_DEV_ID = os.environ.get("EBAY_DEV_ID", "")
 EBAY_CERT_ID = os.environ.get("EBAY_CERT_ID", "")
 EBAY_AUTH_TOKEN = os.environ.get("EBAY_AUTH_TOKEN", "")  # Auth'n'Auth トークン（18ヶ月有効）
 
+# LINE Messaging API 設定
+LINE_CHANNEL_TOKEN = os.environ.get("LINE_CHANNEL_TOKEN", "")
+LINE_USER_ID = os.environ.get("LINE_USER_ID", "")  # Uから始まるユーザーID
+
 # ページ読み込み待機秒数
 PAGE_LOAD_WAIT = 8
 # 要素が見つかるまでの最大待機秒数
@@ -294,7 +298,16 @@ def check_mercari_status(driver, url):
 # ============================================================
 
 def check_rakuma_status(driver, url):
-    """ラクマの商品ステータスを判定"""
+    """
+    ラクマの商品ステータスを判定
+    
+    【判定ロジック（2段階）】
+    1. .type-modal__contents--button--sold の有無（SOLD OUTバッジ）
+       → 売り切れ商品にのみ存在
+    2. .btn_buy の有無（購入ボタン）
+       → 販売中: 「購入に進む」ボタンが存在
+       → 売り切れ: ボタンが存在しない
+    """
     result = {
         "url": url,
         "platform": "rakuma",
@@ -305,6 +318,7 @@ def check_rakuma_status(driver, url):
     }
 
     try:
+        logger.info(f"ページ読み込み中: {url}")
         driver.get(url)
         time.sleep(PAGE_LOAD_WAIT)
 
@@ -315,29 +329,45 @@ def check_rakuma_status(driver, url):
         except NoSuchElementException:
             result["name"] = driver.title
 
-        # 売り切れ判定: ボタンのテキストまたは sold-out クラス
-        page_source = driver.page_source
+        logger.info(f"商品名: {result['name']}")
 
-        # ラクマの sold-out 判定（セレクタは要調査・更新）
-        sold_elements = driver.find_elements(By.CSS_SELECTOR, '[class*="soldOut"], [class*="sold-out"], [class*="SoldOut"]')
-        if sold_elements:
+        # ============================================
+        # 判定方法1: SOLD OUTバッジ
+        # ============================================
+        sold_badges = driver.find_elements(
+            By.CSS_SELECTOR, '.type-modal__contents--button--sold'
+        )
+        if sold_badges:
             result["status"] = "売り切れ"
-            result["method"] = "css-class"
+            result["method"] = "sold-badge"
+            result["detail"] = f"SOLD OUTバッジ検出: '{sold_badges[0].text}'"
+            logger.info(f"✅ 方法1で判定: 売り切れ（SOLD OUTバッジ）")
             return result
 
-        # 購入ボタンの有無
-        buy_buttons = driver.find_elements(By.CSS_SELECTOR, 'button[class*="buy"], [data-testid*="buy"], [class*="purchase"]')
+        logger.info("方法1: SOLD OUTバッジなし → 方法2へ")
+
+        # ============================================
+        # 判定方法2: 購入ボタンの有無
+        # ============================================
+        buy_buttons = driver.find_elements(By.CSS_SELECTOR, '.btn_buy')
         if buy_buttons:
-            btn_text = buy_buttons[0].text
-            if "売り切れ" in btn_text or "sold" in btn_text.lower():
-                result["status"] = "売り切れ"
-            else:
+            btn_text = buy_buttons[0].text.strip()
+            if "購入" in btn_text:
                 result["status"] = "販売中"
-            result["method"] = "buy-button"
+                result["method"] = "buy-button"
+                result["detail"] = f"購入ボタン検出: '{btn_text}'"
+                logger.info(f"✅ 方法2で判定: 販売中（ボタン='{btn_text}'）")
+            else:
+                result["status"] = "判定不能"
+                result["method"] = "buy-button-unknown"
+                result["detail"] = f"ボタンテキスト不明: '{btn_text}'"
             return result
 
-        result["status"] = "判定不能"
-        result["detail"] = "判定要素が見つかりません"
+        # 購入ボタンもSOLDバッジもない → 売り切れと推定
+        result["status"] = "売り切れ"
+        result["method"] = "no-badge-no-button"
+        result["detail"] = "SOLD OUTバッジなし & 購入ボタンなし → 売り切れと推定"
+        logger.info("✅ SOLD OUTバッジなし & 購入ボタンなし → 売り切れと推定")
 
     except Exception as e:
         result["detail"] = str(e)[:100]
@@ -351,7 +381,15 @@ def check_rakuma_status(driver, url):
 # ============================================================
 
 def check_yahoo_fleamarket_status(driver, url):
-    """ヤフーフリマの商品ステータスを判定"""
+    """
+    ヤフーフリマの商品ステータスを判定
+    
+    【判定ロジック（2段階）】
+    1. #item_buy_button の有無（購入ボタン）
+       → 販売中: id="item_buy_button" が存在、テキスト「購入手続きへ」
+       → 売り切れ: 購入ボタンが存在しない
+    2. 「コピーして出品する」ボタンの有無（売り切れ時のみ表示）
+    """
     result = {
         "url": url,
         "platform": "yahoo_fleamarket",
@@ -362,33 +400,59 @@ def check_yahoo_fleamarket_status(driver, url):
     }
 
     try:
+        logger.info(f"ページ読み込み中: {url}")
         driver.get(url)
-        time.sleep(PAGE_LOAD_WAIT)
 
+        # ヤフフリマはSPAなのでレンダリングを待つ
+        WebDriverWait(driver, PAGE_LOAD_WAIT).until(
+            lambda d: d.execute_script("return document.readyState") == "complete"
+        )
+        time.sleep(3)
+
+        # 商品名
         try:
             og_title = driver.find_element(By.CSS_SELECTOR, 'meta[property="og:title"]')
             result["name"] = og_title.get_attribute("content")
         except NoSuchElementException:
             result["name"] = driver.title
 
-        # ヤフーフリマの sold 判定（セレクタは要調査・更新）
-        sold_elements = driver.find_elements(By.CSS_SELECTOR, '[class*="soldOut"], [class*="sold-out"], [class*="Closed"]')
-        if sold_elements:
-            result["status"] = "売り切れ"
-            result["method"] = "css-class"
-            return result
+        logger.info(f"商品名: {result['name']}")
 
-        buy_buttons = driver.find_elements(By.CSS_SELECTOR, 'button[class*="buy"], [class*="purchase"]')
+        # ============================================
+        # 判定方法1: 購入ボタンの有無
+        # ============================================
+        buy_buttons = driver.find_elements(By.CSS_SELECTOR, '#item_buy_button')
         if buy_buttons:
-            btn_text = buy_buttons[0].text
-            if "売り切れ" in btn_text or "販売終了" in btn_text:
-                result["status"] = "売り切れ"
-            else:
+            btn_text = buy_buttons[0].text.strip()
+            if "購入" in btn_text:
                 result["status"] = "販売中"
-            result["method"] = "buy-button"
+                result["method"] = "buy-button"
+                result["detail"] = f"購入ボタン検出: '{btn_text}'"
+                logger.info(f"✅ 方法1で判定: 販売中（ボタン='{btn_text}'）")
+            else:
+                result["status"] = "判定不能"
+                result["method"] = "buy-button-unknown"
+                result["detail"] = f"ボタンテキスト不明: '{btn_text}'"
             return result
 
-        result["status"] = "判定不能"
+        logger.info("方法1: 購入ボタンなし → 方法2へ")
+
+        # ============================================
+        # 判定方法2: 「コピーして出品する」ボタンの確認
+        # ============================================
+        page_text = driver.find_element(By.TAG_NAME, 'body').text
+        if "コピーして出品する" in page_text:
+            result["status"] = "売り切れ"
+            result["method"] = "copy-listing-button"
+            result["detail"] = "購入ボタンなし & 「コピーして出品する」検出 → 売り切れ"
+            logger.info("✅ 方法2で判定: 売り切れ（コピーして出品するボタン検出）")
+            return result
+
+        # どちらのボタンもない
+        result["status"] = "売り切れ"
+        result["method"] = "no-buy-button"
+        result["detail"] = "購入ボタンなし → 売り切れと推定"
+        logger.info("✅ 購入ボタンなし → 売り切れと推定")
 
     except Exception as e:
         result["detail"] = str(e)[:100]
@@ -458,7 +522,7 @@ def init_gspread():
     """Google Sheets API を初期化"""
     if not SERVICE_ACCOUNT_JSON or not SPREADSHEET_ID:
         logger.warning("Google Sheets の設定がありません。スキップします。")
-        return None, None, None
+        return None, None, None, None
 
     try:
         import gspread
@@ -485,12 +549,73 @@ def init_gspread():
             log_sheet = None
             logger.warning("チェックログシートが見つかりません")
 
+        # 設定シートを取得
+        try:
+            settings_sheet = spreadsheet.worksheet(SHEET_SETTINGS)
+        except Exception:
+            settings_sheet = None
+            logger.warning("設定シートが見つかりません")
+
         logger.info("Google Sheets 接続完了（仕入れ台帳）")
-        return client, daichou, log_sheet
+        return client, daichou, log_sheet, settings_sheet
 
     except Exception as e:
         logger.error(f"Google Sheets 接続失敗: {e}")
-        return None, None, None
+        return None, None, None, None
+
+
+def read_settings(settings_sheet):
+    """
+    設定シートから各種設定値を読み取る
+    
+    戻り値: dict
+    """
+    defaults = {
+        "notify_method": "両方",       # ライン / メール / 両方
+        "monitor_enabled": True,        # 監視ON/OFF
+        "sold_action": 1,               # 1=自動停止, 2=編集リンクのみ
+    }
+
+    if not settings_sheet:
+        return defaults
+
+    try:
+        # 設定シートのA列を全て取得
+        all_values = settings_sheet.get_all_values()
+        settings_dict = {}
+        for row in all_values:
+            if len(row) >= 2 and row[0]:
+                settings_dict[row[0].strip()] = row[1]
+
+        # 通知方法
+        notify_val = settings_dict.get("通知方法", "両方").strip()
+        if notify_val in ["ライン", "メール", "両方"]:
+            defaults["notify_method"] = notify_val
+
+        # 監視ON/OFF
+        monitor_val = settings_dict.get("監視機能 (ON=1 / OFF=0)", "1")
+        try:
+            defaults["monitor_enabled"] = int(float(monitor_val)) == 1
+        except (ValueError, TypeError):
+            pass
+
+        # 売り切れ時アクション
+        action_val = settings_dict.get("売り切れ時アクション (1=自動停止 / 2=編集リンク)", "1")
+        try:
+            defaults["sold_action"] = int(float(action_val))
+        except (ValueError, TypeError):
+            pass
+
+        logger.info(
+            f"設定読み込み: 通知={defaults['notify_method']}, "
+            f"監視={'ON' if defaults['monitor_enabled'] else 'OFF'}, "
+            f"売切アクション={defaults['sold_action']}"
+        )
+
+    except Exception as e:
+        logger.error(f"設定読み込みエラー: {e}")
+
+    return defaults
 
 
 def get_urls_from_sheet(daichou):
@@ -639,7 +764,7 @@ def write_check_log(log_sheet, result):
 
         new_row = [
             now,                                    # A: 実行日時
-            result.get("platform", ""),             # B: 仕入先
+            get_platform_display(result.get("platform", "")),  # B: 仕入先（カタカナ）
             result.get("url", ""),                  # C: URL
             result.get("name", ""),                 # D: 商品名
             result.get("status", "エラー"),          # E: 判定結果
@@ -755,9 +880,130 @@ def process_ebay_stop(items_to_stop):
     return results
 
 
+# プラットフォーム名変換（内部名 → 表示名）
+PLATFORM_DISPLAY = {
+    "mercari": "メルカリ",
+    "rakuma": "ラクマ",
+    "yahoo_fleamarket": "ヤフーフリマ",
+    "unknown": "不明",
+}
+
+
+def get_platform_display(platform):
+    """プラットフォーム内部名を表示用カタカナに変換"""
+    return PLATFORM_DISPLAY.get(platform, platform)
+
+
+# ============================================================
+# LINE Messaging API 通知
+# ============================================================
+
+def send_line_notification(message_text):
+    """
+    LINE Messaging API でプッシュ通知を送信する
+    
+    LINE Notify は2025年3月31日に終了。
+    代替の Messaging API を使用（月200通まで無料）。
+    """
+    import requests
+
+    if not LINE_CHANNEL_TOKEN or not LINE_USER_ID:
+        logger.warning("LINE API の設定がありません。スキップします。")
+        return False
+
+    try:
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {LINE_CHANNEL_TOKEN}",
+        }
+
+        payload = {
+            "to": LINE_USER_ID,
+            "messages": [
+                {
+                    "type": "text",
+                    "text": message_text,
+                }
+            ],
+        }
+
+        response = requests.post(
+            "https://api.line.me/v2/bot/message/push",
+            headers=headers,
+            json=payload,
+        )
+
+        if response.status_code == 200:
+            logger.info("LINE 通知送信完了")
+            return True
+        else:
+            logger.error(f"LINE 通知失敗: {response.status_code} - {response.text[:200]}")
+            return False
+
+    except Exception as e:
+        logger.error(f"LINE 通知エラー: {e}")
+        return False
+
+
 # ============================================================
 # メール通知
 # ============================================================
+
+def build_notification_text(changed_items, ebay_results=None):
+    """通知メッセージ本文を生成する（LINE / メール共通）"""
+    lines = [f"🔴 売り切れ検知: {len(changed_items)} 件\n"]
+
+    for item in changed_items:
+        platform = get_platform_display(item.get("platform", ""))
+        ebay_id = item.get("ebay_id", "")
+        lines.append("━━━━━━━━━━━━━━━━━━━━")
+        lines.append(f"商品名: {item['name']}")
+        lines.append(f"仕入れ先: {platform}")
+        lines.append(f"URL: {item['url']}")
+        if ebay_id:
+            lines.append(f"eBay ItemID: {ebay_id}")
+            ebay_url = (
+                f"https://www.ebay.com/lstng?mode=ReviseItem"
+                f"&itemId={ebay_id}"
+                f"&sr=wn"
+                f"&ReturnURL=https%3A%2F%2Fwww.ebay.com%2Fsh%2Flst%2Factive%3Foffset%3D0"
+            )
+            lines.append(f"\n▼ eBay出品を編集:\n{ebay_url}")
+
+            # eBay自動停止の結果
+            if ebay_results:
+                for er in ebay_results:
+                    if er["ebay_id"] == ebay_id:
+                        if er["success"]:
+                            lines.append("→ ✅ eBay出品を自動停止しました")
+                        else:
+                            lines.append(f"→ ❌ eBay自動停止失敗: {er['message']}")
+                        break
+
+        lines.append(f"検知日時: {datetime.now(JST).strftime('%Y/%m/%d %H:%M:%S')}")
+
+    lines.append("\n━━━━━━━━━━━━━━━━━━━━")
+    lines.append("このメッセージは自動送信です。")
+    return "\n".join(lines)
+
+
+def send_notifications(changed_items, ebay_results=None, notify_method="両方"):
+    """
+    通知方法に応じてLINE/メール/両方で通知する
+    
+    notify_method: "ライン" / "メール" / "両方"
+    """
+    if not changed_items:
+        return
+
+    message_text = build_notification_text(changed_items, ebay_results)
+
+    if notify_method in ["メール", "両方"]:
+        send_email(changed_items, ebay_results)
+
+    if notify_method in ["ライン", "両方"]:
+        send_line_notification(message_text)
+
 
 def send_email(changed_items, ebay_results=None):
     """売り切れ検知時にメール通知を送信"""
@@ -839,7 +1085,16 @@ def main():
 
     try:
         # Google Sheets から URL 取得
-        client, daichou, log_sheet = init_gspread()
+        client, daichou, log_sheet, settings_sheet = init_gspread()
+
+        # 設定を読み込み
+        settings = read_settings(settings_sheet)
+
+        # 監視機能が無効の場合は終了
+        if not settings["monitor_enabled"]:
+            logger.info("⏸️ 監視機能が無効です。終了します。")
+            return
+
         items = get_urls_from_sheet(daichou)
 
         # シートにURLがない場合はテスト用URLを使用
@@ -854,7 +1109,7 @@ def main():
 
         # 各URLをチェック
         results = []
-        changed_items = []  # 販売中→売り切れに変わった商品
+        changed_items = []  # 売り切れ商品
 
         for i, item in enumerate(items):
             logger.info(f"\n--- [{i+1}/{len(items)}] ---")
@@ -883,19 +1138,24 @@ def main():
             if i < len(items) - 1:
                 time.sleep(2)
 
-        # 売り切れ商品のeBay出品を自動停止
+        # 売り切れ商品のeBay出品を自動停止（設定に応じて）
         ebay_results = []
         if changed_items:
             logger.info(f"\n🔔 売り切れ検出: {len(changed_items)} 件")
-            ebay_results = process_ebay_stop(changed_items)
-            if ebay_results:
-                for er in ebay_results:
-                    icon = "✅" if er["success"] else "❌"
-                    logger.info(f"  eBay {icon} ItemID={er['ebay_id']}: {er['message']}")
 
-        # メール通知
+            if settings["sold_action"] == 1:
+                # 自動停止
+                ebay_results = process_ebay_stop(changed_items)
+                if ebay_results:
+                    for er in ebay_results:
+                        icon = "✅" if er["success"] else "❌"
+                        logger.info(f"  eBay {icon} ItemID={er['ebay_id']}: {er['message']}")
+            else:
+                logger.info("設定: 編集リンクのみ（自動停止なし）")
+
+        # 通知送信（設定に応じてLINE/メール/両方）
         if changed_items:
-            send_email(changed_items, ebay_results)
+            send_notifications(changed_items, ebay_results, settings["notify_method"])
 
         # 結果サマリー
         logger.info("\n" + "=" * 60)
@@ -906,8 +1166,9 @@ def main():
             status_icon = {"販売中": "🟢", "売り切れ": "🔴", "エラー": "❌"}.get(
                 r["status"], "⚠️"
             )
+            platform = get_platform_display(r.get("platform", ""))
             logger.info(
-                f"  {status_icon} {r['status']:6s} | {r['method']:25s} | {r['name'][:40]}"
+                f"  {status_icon} {r['status']:6s} | {platform:8s} | {r['method']:25s} | {r['name'][:40]}"
             )
 
         sale_count = sum(1 for r in results if r["status"] == "販売中")
