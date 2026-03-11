@@ -147,21 +147,18 @@ def check_mercari_status(driver, url):
     """
     メルカリの商品ステータスを判定する。
     
-    【判定方法（優先順）】
-    1. data-testid="thumbnail-sticker" の存在確認
-       → 売り切れ商品のメイン画像にだけ表示されるSOLDバッジ
-       → 販売中のページには存在しない（0個）
-       
+    【通常メルカリ (/item/)】
+    1. data-testid="thumbnail-sticker" の存在確認（SOLDバッジ）
     2. data-testid="checkout-button" のテキスト確認
-       → 売り切れ: 「売り切れました」
-       → 販売中: 「購入手続きへ」
-       
     3. checkout-button の name 属性確認
-       → 売り切れ: name="disabled"
-       → 販売中: name="purchase"
     
-    戻り値: dict {status, name, method, detail}
+    【メルカリショップス (/shops/product/)】
+    ※ thumbnail-sticker は関連商品のSOLDを誤検知するため使わない
+    1. data-testid="variant-purchase-button" の存在確認（購入ボタン）
+    2. data-testid="checkout-button" のテキスト確認（フォールバック）
     """
+    is_shops = "/shops/product/" in url
+
     result = {
         "url": url,
         "platform": "mercari",
@@ -173,6 +170,8 @@ def check_mercari_status(driver, url):
 
     try:
         logger.info(f"ページ読み込み中: {url}")
+        if is_shops:
+            logger.info("メルカリショップス URL を検出")
         driver.get(url)
 
         # JavaScript の実行完了を待つ
@@ -198,14 +197,66 @@ def check_mercari_status(driver, url):
         logger.info(f"商品名: {result['name']}")
 
         # ============================================
-        # 判定方法1: thumbnail-sticker（SOLDバッジ）
+        # ショップス用判定
         # ============================================
+        if is_shops:
+            # 方法S1: variant-purchase-button（ショップス専用の購入ボタン）
+            variant_btns = driver.find_elements(
+                By.CSS_SELECTOR, '[data-testid="variant-purchase-button"]'
+            )
+            if variant_btns:
+                btn_text = variant_btns[0].text.strip()
+                if "購入" in btn_text:
+                    result["status"] = "販売中"
+                    result["method"] = "shops-variant-button"
+                    result["detail"] = f"ショップス購入ボタン検出: '{btn_text}'"
+                    logger.info(f"✅ ショップス判定: 販売中（ボタン='{btn_text}'）")
+                    return result
+                elif "売り切れ" in btn_text:
+                    result["status"] = "売り切れ"
+                    result["method"] = "shops-variant-button"
+                    result["detail"] = f"ショップス売り切れボタン: '{btn_text}'"
+                    logger.info(f"✅ ショップス判定: 売り切れ（ボタン='{btn_text}'）")
+                    return result
+
+            logger.info("ショップス: variant-purchase-button なし → checkout-button へ")
+
+            # 方法S2: checkout-button（フォールバック）
+            checkout_btns = driver.find_elements(
+                By.CSS_SELECTOR, '[data-testid="checkout-button"]'
+            )
+            if checkout_btns:
+                btn_text = checkout_btns[0].text.strip()
+                if "購入" in btn_text:
+                    result["status"] = "販売中"
+                    result["method"] = "shops-checkout-button"
+                    result["detail"] = f"ボタンテキスト='{btn_text}'"
+                    logger.info(f"✅ ショップス判定: 販売中（checkout='{btn_text}'）")
+                    return result
+                elif "売り切れ" in btn_text:
+                    result["status"] = "売り切れ"
+                    result["method"] = "shops-checkout-button"
+                    result["detail"] = f"ボタンテキスト='{btn_text}'"
+                    logger.info(f"✅ ショップス判定: 売り切れ（checkout='{btn_text}'）")
+                    return result
+
+            # ショップスで購入ボタンが見つからない → 売り切れと推定
+            result["status"] = "売り切れ"
+            result["method"] = "shops-no-button"
+            result["detail"] = "ショップス: 購入ボタンなし → 売り切れと推定"
+            logger.info("✅ ショップス: 購入ボタンなし → 売り切れと推定")
+            return result
+
+        # ============================================
+        # 通常メルカリ用判定
+        # ============================================
+
+        # 判定方法1: thumbnail-sticker（SOLDバッジ）
         stickers = driver.find_elements(
             By.CSS_SELECTOR, '[data-testid="thumbnail-sticker"]'
         )
 
         if len(stickers) > 0:
-            # SOLDバッジが存在する = 売り切れ
             aria_label = stickers[0].get_attribute("aria-label") or ""
             result["status"] = "売り切れ"
             result["method"] = "thumbnail-sticker"
@@ -215,9 +266,7 @@ def check_mercari_status(driver, url):
 
         logger.info("方法1: SOLDバッジなし → 方法2へ")
 
-        # ============================================
         # 判定方法2: checkout-button のテキスト
-        # ============================================
         try:
             checkout_btn = WebDriverWait(driver, ELEMENT_WAIT).until(
                 EC.presence_of_element_located(
@@ -243,9 +292,7 @@ def check_mercari_status(driver, url):
                 logger.info(f"✅ 方法2で判定: 販売中（テキスト='{btn_text}'）")
                 return result
 
-            # ============================================
             # 判定方法3: checkout-button の name 属性
-            # ============================================
             if btn_name == "disabled":
                 result["status"] = "売り切れ"
                 result["method"] = "checkout-button-name"
@@ -260,16 +307,12 @@ def check_mercari_status(driver, url):
                 logger.info(f"✅ 方法3で判定: 販売中（name='{btn_name}'）")
                 return result
 
-            # どの条件にも合致しない
             result["status"] = "判定不能"
             result["method"] = "unknown"
             result["detail"] = f"ボタンテキスト='{btn_text}', name='{btn_name}'"
             logger.warning(f"⚠️ 判定不能: text='{btn_text}', name='{btn_name}'")
 
         except TimeoutException:
-            # checkout-button が見つからない場合
-            # SOLDバッジもなく、ボタンもない → 販売中と推定
-            # （ページ構造が変わった可能性あり）
             result["status"] = "販売中"
             result["method"] = "no-sticker-no-button"
             result["detail"] = "SOLDバッジなし & checkout-buttonタイムアウト → 販売中と推定"
@@ -714,7 +757,8 @@ def update_daichou(daichou, row_num, result):
             unknown_count += 1
 
         # --- 状態変化の判定 ---
-        if prev_status == "販売中" and new_status == "売り切れ":
+        # 販売中→売り切れ、または初回チェックで売り切れの場合に通知
+        if new_status == "売り切れ" and prev_status != "売り切れ":
             status_changed = True
 
         # --- 各列を更新 ---
@@ -1025,7 +1069,7 @@ def send_email(changed_items, ebay_results=None):
             body += f"━━━━━━━━━━━━━━━━━━━━\n"
             body += f"商品名: {item['name']}\n"
             body += f"URL: {item['url']}\n"
-            body += f"プラットフォーム: {item['platform']}\n"
+            body += f"プラットフォーム: {get_platform_display(item['platform'])}\n"
             body += f"判定方法: {item['method']}\n"
             body += f"検知日時: {datetime.now(JST).strftime('%Y/%m/%d %H:%M:%S')}\n"
             # eBay ItemIDがあれば出品編集リンクを追加
@@ -1126,12 +1170,16 @@ def main():
 
             # 仕入れ台帳を更新
             if daichou and item["row_num"] > 0:
-                update_daichou(daichou, item["row_num"], result)
-
-            # 売り切れなら毎回通知リストに追加
-            if result["status"] == "売り切れ":
-                result["ebay_id"] = item.get("ebay_id", "")
-                changed_items.append(result)
+                status_changed = update_daichou(daichou, item["row_num"], result)
+                # 販売中→売り切れに変わった場合のみ通知（1回だけ）
+                if status_changed:
+                    result["ebay_id"] = item.get("ebay_id", "")
+                    changed_items.append(result)
+            else:
+                # シートなし（テスト用）の場合は売り切れなら通知
+                if result["status"] == "売り切れ":
+                    result["ebay_id"] = item.get("ebay_id", "")
+                    changed_items.append(result)
 
             # チェックログに追記
             if log_sheet:
