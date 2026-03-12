@@ -210,6 +210,12 @@ def _parse_ai_response(response_text: str, source_item: SourceItem, exchange_rat
             product.ebay_price_usd = round(source_item.price_jpy / exchange_rate * 2.5, 2)
             product.warnings.append("[推論] 価格をデフォルト計算で設定しました")
 
+        # Brand必須チェック（eBay要件）
+        if "Brand" not in product.item_specifics or not product.item_specifics["Brand"]:
+            product.item_specifics["Brand"] = product.inferred_brand or source_item.brand or "Unbranded"
+        if "Country/Region of Manufacture" not in product.item_specifics:
+            product.item_specifics["Country/Region of Manufacture"] = "Japan"
+
         logger.info(f"  AI生成タイトル: {product.ebay_title}")
         logger.info(f"  AI推奨価格: ${product.ebay_price_usd}")
 
@@ -251,6 +257,15 @@ def _fallback_generation(source_item: SourceItem, exchange_rate: float) -> Produ
         product.warnings.append("[推論] 仕入れ価格が取得できないためデフォルト$29.99を設定")
 
     product.ebay_condition_id = 3000
+    
+    # Item Specifics（Brandは必須）
+    brand_name = source_item.brand or "Unbranded"
+    product.item_specifics = {
+        "Brand": brand_name,
+        "Country/Region of Manufacture": "Japan",
+    }
+    product.inferred_brand = brand_name
+    
     product.warnings.append("[推論] フォールバック生成を使用しました。OpenAI APIキーとクレジットを確認してください。")
 
     return product
