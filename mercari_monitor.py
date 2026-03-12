@@ -834,6 +834,120 @@ def write_check_log(log_sheet, result):
 EBAY_API_URL = "https://api.ebay.com/ws/api.dll"
 
 
+def get_ebay_item_price(item_id):
+    """
+    eBay Trading API の GetItem で商品の販売価格を取得する
+    
+    戻り値: (price_usd, listing_status) or (None, None)
+    price_usd: float（USD）
+    listing_status: "Active", "Completed", "Ended" 等
+    """
+    import requests
+    import re
+
+    if not EBAY_AUTH_TOKEN or not item_id:
+        return None, None
+
+    try:
+        xml_request = f"""<?xml version="1.0" encoding="utf-8"?>
+<GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+    <RequesterCredentials>
+        <eBayAuthToken>{EBAY_AUTH_TOKEN}</eBayAuthToken>
+    </RequesterCredentials>
+    <ItemID>{item_id}</ItemID>
+    <OutputSelector>SellingStatus.CurrentPrice</OutputSelector>
+    <OutputSelector>ListingDetails.EndTime</OutputSelector>
+    <OutputSelector>SellingStatus.ListingStatus</OutputSelector>
+</GetItemRequest>"""
+
+        headers = {
+            "X-EBAY-API-COMPATIBILITY-LEVEL": "1209",
+            "X-EBAY-API-CALL-NAME": "GetItem",
+            "X-EBAY-API-SITEID": "0",
+            "X-EBAY-API-APP-NAME": EBAY_APP_ID,
+            "X-EBAY-API-DEV-NAME": EBAY_DEV_ID,
+            "X-EBAY-API-CERT-NAME": EBAY_CERT_ID,
+            "Content-Type": "text/xml;charset=UTF-8",
+        }
+
+        response = requests.post(EBAY_API_URL, headers=headers, data=xml_request.encode("utf-8"))
+
+        if response.status_code == 200:
+            text = response.text
+
+            if "<Ack>Success</Ack>" in text or "<Ack>Warning</Ack>" in text:
+                # CurrentPrice を抽出
+                price_match = re.search(r"<CurrentPrice[^>]*>([\d.]+)</CurrentPrice>", text)
+                status_match = re.search(r"<ListingStatus>(\w+)</ListingStatus>", text)
+
+                price = float(price_match.group(1)) if price_match else None
+                status = status_match.group(1) if status_match else None
+
+                logger.info(f"eBay価格取得: ItemID={item_id}, ${price}, status={status}")
+                return price, status
+            else:
+                error_match = re.search(r"<LongMessage>(.*?)</LongMessage>", text)
+                error_msg = error_match.group(1) if error_match else "不明"
+                logger.error(f"eBay GetItem失敗: ItemID={item_id}, {error_msg}")
+                return None, None
+        else:
+            logger.error(f"eBay GetItem HTTPエラー: {response.status_code}")
+            return None, None
+
+    except Exception as e:
+        logger.error(f"eBay GetItem エラー: {e}")
+        return None, None
+
+
+def update_ebay_prices(daichou, items):
+    """
+    全商品のeBay販売価格を取得してスプレッドシートに反映する
+    
+    G列: eBay販売金額（$）
+    更新条件: eBay ItemIDがある商品のみ
+    """
+    if not EBAY_AUTH_TOKEN or not daichou:
+        logger.info("eBay APIまたはシートが未設定。価格取得をスキップ")
+        return
+
+    updated = 0
+    for item in items:
+        ebay_id = item.get("ebay_id", "")
+        row_num = item.get("row_num", 0)
+        if not ebay_id or row_num == 0:
+            continue
+
+        price, listing_status = get_ebay_item_price(ebay_id)
+        if price is not None:
+            try:
+                # 現在のG列の値を取得
+                current_price = daichou.cell(row_num, COL_EBAY_PRICE).value
+                try:
+                    current_price = float(current_price) if current_price else None
+                except (ValueError, TypeError):
+                    current_price = None
+
+                # G列: eBay販売金額($)を更新
+                daichou.update_cell(row_num, COL_EBAY_PRICE, price)
+
+                # 価格が変わった場合のみ日時を記録
+                if current_price is None or abs(current_price - price) > 0.01:
+                    now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
+                    daichou.update_cell(row_num, COL_MEMO, f"価格変更: ${price} ({now})")
+                    logger.info(f"  行{row_num}: ${current_price} → ${price}（変更あり）")
+                else:
+                    logger.info(f"  行{row_num}: ${price}（変更なし）")
+
+                updated += 1
+
+            except Exception as e:
+                logger.error(f"  行{row_num} 価格更新失敗: {e}")
+
+        time.sleep(0.5)  # レート制限対策
+
+    logger.info(f"eBay価格更新完了: {updated} 件")
+
+
 def end_ebay_listing(item_id):
     """
     eBay Trading API で出品を停止する（EndFixedPriceItem）
@@ -1153,6 +1267,11 @@ def main():
             ]
 
         logger.info(f"チェック対象: {len(items)} 件")
+
+        # eBay販売価格を自動取得してシートに反映
+        if EBAY_AUTH_TOKEN and daichou:
+            logger.info("\n📊 eBay販売価格の取得中...")
+            update_ebay_prices(daichou, items)
 
         # 各URLをチェック
         results = []
