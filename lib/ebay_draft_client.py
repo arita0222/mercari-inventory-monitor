@@ -365,7 +365,7 @@ def create_ebay_draft(product: ProductInfo, verify_only: bool = True,
         response = requests.post(EBAY_API_URL, headers=headers,
                                  data=xml_request.encode("utf-8"), timeout=30)
 
-        result.raw_response = response.text[:1000]
+        result.raw_response = response.text[:3000]
 
         if response.status_code == 200:
             text = response.text
@@ -384,9 +384,39 @@ def create_ebay_draft(product: ProductInfo, verify_only: bool = True,
                     logger.warning(f"  eBay Warning: {w}")
 
             elif "<Ack>Failure</Ack>" in text:
-                errors = re.findall(r"<LongMessage>(.*?)</LongMessage>", text)
-                result.error_message = errors[0] if errors else "不明なエラー"
-                logger.error(f"❌ eBay {call_name} 失敗: {result.error_message}")
+                # 全エラーメッセージを取得
+                all_errors = re.findall(r"<LongMessage>(.*?)</LongMessage>", text)
+                all_severities = re.findall(r"<SeverityCode>(.*?)</SeverityCode>", text)
+                
+                # 実際のエラー（Warning以外）をフィルタ
+                real_errors = []
+                warning_msgs = []
+                for i, msg in enumerate(all_errors):
+                    severity = all_severities[i] if i < len(all_severities) else "Error"
+                    if severity == "Warning":
+                        warning_msgs.append(msg)
+                        logger.warning(f"  eBay Warning: {msg[:100]}")
+                    else:
+                        real_errors.append(msg)
+                        logger.error(f"  eBay Error: {msg[:100]}")
+                
+                if real_errors:
+                    result.error_message = " | ".join(real_errors)[:500]
+                elif warning_msgs:
+                    # Warningしかない場合は成功扱いにする
+                    result.success = True
+                    result.verified = True
+                    result.published = not verify_only
+                    action = "検証成功（Warning付き）" if verify_only else "出品成功（Warning付き）"
+                    logger.info(f"✅ eBay {action}")
+                    id_match = re.search(r"<ItemID>(\d+)</ItemID>", text)
+                    if id_match:
+                        result.ebay_item_id = id_match.group(1)
+                else:
+                    result.error_message = "不明なエラー"
+                
+                if not result.success:
+                    logger.error(f"❌ eBay {call_name} 失敗: {result.error_message[:200]}")
         else:
             result.error_message = f"HTTP {response.status_code}"
             logger.error(f"❌ eBay API HTTPエラー: {response.status_code}")
