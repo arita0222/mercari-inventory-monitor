@@ -93,6 +93,34 @@ def _parse_mercari(driver, url: str, item: SourceItem) -> SourceItem:
     except (ValueError, TypeError):
         pass
 
+    # 価格フォールバック: ページ内のテキストから取得
+    if not item.price_jpy:
+        try:
+            # data-testid="price" を試す
+            price_el = driver.find_elements(By.CSS_SELECTOR,
+                '[data-testid="price"], [class*="price"] span, [class*="Price"]')
+            for el in price_el:
+                text = el.text.strip().replace(",", "").replace("¥", "").replace("￥", "")
+                nums = re.findall(r'\d+', text)
+                if nums:
+                    val = int(nums[0])
+                    if 100 <= val <= 10000000:  # 妥当な価格範囲
+                        item.price_jpy = val
+                        break
+        except Exception:
+            pass
+
+    # 価格フォールバック2: og:description から抽出
+    if not item.price_jpy:
+        try:
+            desc = _get_meta(driver, "og:description")
+            nums = re.findall(r'[¥￥][\d,]+|[\d,]+円', desc)
+            if nums:
+                val_str = nums[0].replace("¥", "").replace("￥", "").replace("円", "").replace(",", "")
+                item.price_jpy = int(val_str)
+        except Exception:
+            pass
+
     # 画像URL
     item.images = _extract_mercari_images(driver)
 
