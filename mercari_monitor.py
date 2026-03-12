@@ -1300,8 +1300,8 @@ def main():
                     result["ebay_id"] = item.get("ebay_id", "")
                     changed_items.append(result)
 
-            # チェックログに追記
-            if log_sheet:
+            # チェックログに追記（売り切れのみ）
+            if log_sheet and result["status"] == "売り切れ":
                 write_check_log(log_sheet, result)
 
             # レート制限対策
