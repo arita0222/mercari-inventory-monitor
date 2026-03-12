@@ -346,22 +346,17 @@ def create_ebay_draft(product: ProductInfo, verify_only: bool = True,
             {picture_urls}
         </PictureDetails>
         {item_specifics_xml}
-        <ShippingDetails>
-            <ShippingType>Flat</ShippingType>
-            <ShippingServiceOptions>
-                <ShippingServicePriority>1</ShippingServicePriority>
-                <ShippingService>USPSPriority</ShippingService>
-                <ShippingServiceCost currencyID="USD">0.00</ShippingServiceCost>
-                <FreeShipping>true</FreeShipping>
-            </ShippingServiceOptions>
-            <GlobalShipping>false</GlobalShipping>
-        </ShippingDetails>
-        <ReturnPolicy>
-            <ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption>
-            <RefundOption>MoneyBack</RefundOption>
-            <ReturnsWithinOption>Days_30</ReturnsWithinOption>
-            <ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption>
-        </ReturnPolicy>
+        <SellerProfiles>
+            <SellerShippingProfile>
+                <ShippingProfileID>258910926017</ShippingProfileID>
+            </SellerShippingProfile>
+            <SellerReturnProfile>
+                <ReturnProfileID>258391087017</ReturnProfileID>
+            </SellerReturnProfile>
+            <SellerPaymentProfile>
+                <PaymentProfileID>258391089017</PaymentProfileID>
+            </SellerPaymentProfile>
+        </SellerProfiles>
         <Site>US</Site>
     </Item>
 </{call_name}Request>"""
