@@ -1,18 +1,20 @@
 """
-Claude APIを使った商品解析・タイトル/説明文生成
+OpenAI APIを使った商品解析・タイトル/説明文生成
 
 商品情報の構造化、eBayタイトル（英語80文字以内）、
 eBay説明文（英語）を一括生成する。
+
+使用モデル: gpt-4.1-mini（コスパ最高）
 """
 import json
 import re
 import requests
 from lib.common import (
-    SourceItem, ProductInfo, ANTHROPIC_API_KEY, logger
+    SourceItem, ProductInfo, OPENAI_API_KEY, logger
 )
 
-CLAUDE_API_URL = "https://api.anthropic.com/v1/messages"
-CLAUDE_MODEL = "claude-sonnet-4-20250514"
+OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+OPENAI_MODEL = "gpt-4.1-mini"
 
 
 def analyze_and_generate(source_item: SourceItem, exchange_rate: float = 150.0) -> ProductInfo:
@@ -25,20 +27,20 @@ def analyze_and_generate(source_item: SourceItem, exchange_rate: float = 150.0) 
     4. eBayカテゴリ・Item Specifics推定
     5. 推奨販売価格（USD）算出
     """
-    if not ANTHROPIC_API_KEY:
-        logger.error("ANTHROPIC_API_KEY が未設定です")
+    if not OPENAI_API_KEY:
+        logger.error("OPENAI_API_KEY が未設定です")
         return _fallback_generation(source_item, exchange_rate)
 
     product = ProductInfo(source=source_item)
 
     try:
         prompt = _build_analysis_prompt(source_item, exchange_rate)
-        response = _call_claude(prompt)
+        response = _call_openai(prompt)
 
         if response:
-            product = _parse_claude_response(response, source_item, exchange_rate)
+            product = _parse_ai_response(response, source_item, exchange_rate)
         else:
-            logger.warning("Claude API応答なし。フォールバック生成を使用")
+            logger.warning("OpenAI API応答なし。フォールバック生成を使用")
             product = _fallback_generation(source_item, exchange_rate)
 
     except Exception as e:
@@ -49,7 +51,7 @@ def analyze_and_generate(source_item: SourceItem, exchange_rate: float = 150.0) 
 
 
 def _build_analysis_prompt(item: SourceItem, exchange_rate: float) -> str:
-    """Claude APIに送るプロンプトを構築"""
+    """OpenAI APIに送るプロンプトを構築"""
 
     image_info = f"商品画像: {len(item.images)}枚あり" if item.images else "画像なし"
 
@@ -97,7 +99,7 @@ eBay向けの出品データをJSON形式で生成してください。
 - eBay手数料20%と関税10%を考慮し、30%以上の利益が出る価格を提案
 - 相場がわからない場合は仕入値の2.5倍程度を目安に
 
-## 出力（JSONのみ、コードブロックなし）
+## 出力（JSONのみ、コードブロックなし、余計なテキストなし）
 {{
   "inferred_brand": "推定ブランド名（英語）",
   "inferred_model": "推定型番・シリーズ名（英語）",
@@ -108,7 +110,7 @@ eBay向けの出品データをJSON形式で生成してください。
   "inferred_condition_en": "状態の英語表現",
   "inferred_accessories": "付属品（英語、不明ならempty）",
   "inferred_era": "年代・時代（わかる場合のみ）",
-  "keywords": ["keyword1", "keyword2", ...],
+  "keywords": ["keyword1", "keyword2"],
   "ebay_title": "英語タイトル80文字以内",
   "ebay_description": "英語商品説明文",
   "condition_id": 3000,
@@ -124,46 +126,52 @@ eBay向けの出品データをJSON形式で生成してください。
 }}"""
 
 
-def _call_claude(prompt: str) -> str:
-    """Claude APIを呼び出す"""
+def _call_openai(prompt: str) -> str:
+    """OpenAI Chat Completions APIを呼び出す"""
     try:
         headers = {
             "Content-Type": "application/json",
-            "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
         }
 
         payload = {
-            "model": CLAUDE_MODEL,
-            "max_tokens": 2000,
+            "model": OPENAI_MODEL,
             "messages": [
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": "You are an eBay listing expert. Always respond with valid JSON only. No markdown, no code blocks, no extra text."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
             ],
+            "temperature": 0.3,
+            "max_tokens": 2000,
         }
 
-        response = requests.post(CLAUDE_API_URL, headers=headers, json=payload, timeout=60)
+        response = requests.post(OPENAI_API_URL, headers=headers, json=payload, timeout=60)
 
         if response.status_code == 200:
             data = response.json()
-            text = ""
-            for block in data.get("content", []):
-                if block.get("type") == "text":
-                    text += block.get("text", "")
-            return text
+            choices = data.get("choices", [])
+            if choices:
+                return choices[0].get("message", {}).get("content", "")
+            return ""
         else:
-            logger.error(f"Claude API エラー: {response.status_code} - {response.text[:300]}")
+            logger.error(f"OpenAI API エラー: {response.status_code} - {response.text[:300]}")
             return ""
 
     except requests.Timeout:
-        logger.error("Claude API タイムアウト")
+        logger.error("OpenAI API タイムアウト")
         return ""
     except Exception as e:
-        logger.error(f"Claude API 通信エラー: {e}")
+        logger.error(f"OpenAI API 通信エラー: {e}")
         return ""
 
 
-def _parse_claude_response(response_text: str, source_item: SourceItem, exchange_rate: float) -> ProductInfo:
-    """Claude APIのJSON応答をProductInfoに変換"""
+def _parse_ai_response(response_text: str, source_item: SourceItem, exchange_rate: float) -> ProductInfo:
+    """AI APIのJSON応答をProductInfoに変換"""
     product = ProductInfo(source=source_item)
 
     try:
@@ -206,7 +214,7 @@ def _parse_claude_response(response_text: str, source_item: SourceItem, exchange
         logger.info(f"  AI推奨価格: ${product.ebay_price_usd}")
 
     except json.JSONDecodeError as e:
-        logger.error(f"Claude応答のJSON解析失敗: {e}")
+        logger.error(f"AI応答のJSON解析失敗: {e}")
         logger.error(f"応答テキスト: {response_text[:500]}")
         product = _fallback_generation(source_item, exchange_rate)
 
@@ -217,24 +225,32 @@ def _fallback_generation(source_item: SourceItem, exchange_rate: float) -> Produ
     """AIが使えない場合のフォールバック生成"""
     product = ProductInfo(source=source_item)
 
-    # タイトル: 日本語タイトルをそのまま英語化（簡易）
-    title = source_item.title or "Japanese Item"
-    product.ebay_title = f"Japan {title}"[:80]
+    # タイトル: ブランド + "Japanese Item"
+    brand = source_item.brand or ""
+    title_parts = []
+    if brand:
+        title_parts.append(brand)
+    title_parts.append("Japanese Vintage Item from Japan")
+    product.ebay_title = " ".join(title_parts)[:80]
 
-    # 説明文
+    # 説明文（英語）
     product.ebay_description = (
-        f"Item from Japan.\n\n"
-        f"Original Title: {source_item.title}\n\n"
-        f"Condition: {source_item.condition or 'Please check photos'}\n\n"
+        f"Authentic item from Japan.\n\n"
+        f"Original Japanese Title: {source_item.title}\n\n"
+        f"Condition: {source_item.condition or 'Please check photos for details'}\n\n"
         f"Please check all photos carefully before purchasing.\n"
-        f"Ships from Japan. Import duties for US buyers are included (DDP)."
+        f"Ships from Japan. Import duties and taxes for US buyers are included in the price (DDP).\n\n"
+        f"Note: This listing was auto-generated. Details may need manual review."
     )
 
     # 価格
-    if source_item.price_jpy:
+    if source_item.price_jpy and source_item.price_jpy > 0:
         product.ebay_price_usd = round(source_item.price_jpy / exchange_rate * 2.5, 2)
+    else:
+        product.ebay_price_usd = 29.99
+        product.warnings.append("[推論] 仕入れ価格が取得できないためデフォルト$29.99を設定")
 
     product.ebay_condition_id = 3000
-    product.warnings.append("[推論] フォールバック生成を使用しました。手動で修正してください。")
+    product.warnings.append("[推論] フォールバック生成を使用しました。OpenAI APIキーとクレジットを確認してください。")
 
     return product
