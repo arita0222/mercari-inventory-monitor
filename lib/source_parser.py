@@ -151,7 +151,7 @@ def _parse_mercari(driver, url: str, item: SourceItem) -> SourceItem:
 
 
 def _extract_mercari_images(driver) -> list:
-    """メルカリの商品画像URLを抽出"""
+    """メルカリの商品画像URLを抽出（高解像度版）"""
     images = []
     try:
         # メイン画像 + サムネイル画像
@@ -163,8 +163,13 @@ def _extract_mercari_images(driver) -> list:
         for img in img_elements:
             src = img.get_attribute("src") or ""
             if src and "static.mercdn.net" in src and src not in seen:
-                # 高解像度URLに変換
+                # クエリパラメータを除去
                 clean_url = re.sub(r'\?.*$', '', src)
+                # 高解像度URLに変換（小さいサムネイルを避ける）
+                # /thumb/ を /photos/ に変換
+                clean_url = clean_url.replace("/thumb/", "/photos/")
+                # 低解像度パスを高解像度に
+                clean_url = re.sub(r'/c!/w=\d+', '', clean_url)
                 seen.add(clean_url)
                 images.append(clean_url)
     except Exception as e:
@@ -174,6 +179,8 @@ def _extract_mercari_images(driver) -> list:
     if not images:
         og_image = _get_meta(driver, "og:image")
         if og_image:
+            # og:imageも高解像度に
+            og_image = re.sub(r'\?.*$', '', og_image)
             images.append(og_image)
 
     return images[:12]  # eBay上限12枚
