@@ -86,7 +86,7 @@ def log_draft_to_sheet(daichou, product: ProductInfo, draft_result: DraftResult)
         # 各セルを設定
         daichou.update_cell(r, 1, next_id)                    # A: ID
         daichou.update_cell(r, 2, platform_name)               # B: 仕入れ先
-        daichou.update_cell(r, 3, product.ebay_title[:200])    # C: 商品名（eBayタイトル）
+        daichou.update_cell(r, 3, (source.title or product.ebay_title)[:200])  # C: 商品名（元の日本語タイトル）
         daichou.update_cell(r, 4, source.url)                  # D: 仕入れ元URL
         if ebay_item_id:
             daichou.update_cell(r, 5, ebay_item_id)            # E: eBay ItemID
