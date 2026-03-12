@@ -453,7 +453,7 @@ def _build_item_specifics_xml(specifics: dict) -> str:
     for name, value in specifics.items():
         if value:
             xml += f"""  <NameValueList>
-    <n>{_escape_xml(str(name))}</n>
+    <Name>{_escape_xml(str(name))}</Name>
     <Value>{_escape_xml(str(value))}</Value>
   </NameValueList>\n"""
     xml += "</ItemSpecifics>"
