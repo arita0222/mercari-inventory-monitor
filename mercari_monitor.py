@@ -1326,6 +1326,33 @@ def main():
         # 通知送信（設定に応じてLINE/メール/両方）
         if changed_items:
             send_notifications(changed_items, ebay_results, settings["notify_method"])
+        else:
+            # 売り切れなし → 稼働確認通知
+            no_sold_msg = (
+                f"✅ フリマ監視レポート\n\n"
+                f"売り切れ商品はありません。\n\n"
+                f"チェック件数: {len(results)} 件\n"
+                f"販売中: {sum(1 for r in results if r['status'] == '販売中')}\n"
+                f"実行日時: {datetime.now(JST).strftime('%Y/%m/%d %H:%M:%S')}"
+            )
+            notify_method = settings["notify_method"]
+            if notify_method in ["ライン", "両方"]:
+                send_line_notification(no_sold_msg)
+            if notify_method in ["メール", "両方"]:
+                if GMAIL_ADDRESS and GMAIL_PASSWORD and NOTIFY_EMAIL:
+                    try:
+                        msg = MIMEMultipart()
+                        msg["From"] = GMAIL_ADDRESS
+                        msg["To"] = NOTIFY_EMAIL
+                        msg["Subject"] = "【フリマ検知】売り切れ商品はありません"
+                        msg.attach(MIMEText(no_sold_msg, "plain", "utf-8"))
+                        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                            server.login(GMAIL_ADDRESS, GMAIL_PASSWORD)
+                            server.send_message(msg)
+                        logger.info("稼働確認メール送信完了")
+                    except Exception as e:
+                        logger.error(f"稼働確認メール送信失敗: {e}")
+            logger.info("✅ 売り切れ商品なし → 稼働確認通知送信")
 
         # 結果サマリー
         logger.info("\n" + "=" * 60)
