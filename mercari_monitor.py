@@ -814,9 +814,12 @@ def update_daichou(daichou, row_num, result):
             unknown_count += 1
 
         # --- 状態変化の判定 ---
-        # 販売中→売り切れ、または初回チェックで売り切れの場合に通知
+        # 販売中→売り切れの場合に通知
+        # eBay停止は売り切れのたびに毎回実行（停止失敗時のリカバリのため）
         if new_status == "売り切れ" and prev_status != "売り切れ":
-            status_changed = True
+            status_changed = True  # 通知は初回のみ
+        elif new_status == "売り切れ" and prev_status == "売り切れ":
+            status_changed = True  # eBay停止チェックのため毎回Trueにする
 
         # --- 各列を更新 ---
         # C: 商品名（取得できた場合のみ）
