@@ -422,7 +422,7 @@ def check_rakuma_status(driver, url):
         # ============================================
         # 判定方法2: 購入ボタンの有無
         # ============================================
-        buy_buttons = driver.find_elements(By.CSS_SELECTOR, '.btn_buy')
+        buy_buttons = driver.find_elements(By.CSS_SELECTOR, 'a.btn_buy[href*="transaction"], a.btn-primary.btn_buy')
         if buy_buttons:
             btn_text = buy_buttons[0].text.strip()
             if "購入" in btn_text:
@@ -436,11 +436,11 @@ def check_rakuma_status(driver, url):
                 result["detail"] = f"ボタンテキスト不明: '{btn_text}'"
             return result
 
-        # 購入ボタンもSOLDバッジもない → 売り切れと推定
-        result["status"] = "売り切れ"
+        # 購入ボタンもSOLDバッジもない → 不明（誤検知防止）
+        result["status"] = "不明"
         result["method"] = "no-badge-no-button"
-        result["detail"] = "SOLD OUTバッジなし & 購入ボタンなし → 売り切れと推定"
-        logger.info("✅ SOLD OUTバッジなし & 購入ボタンなし → 売り切れと推定")
+        result["detail"] = "SOLD OUTバッジなし & 購入ボタンなし → 不明（誤検知防止）"
+        logger.info("⚠️ SOLD OUTバッジなし & 購入ボタンなし → 不明（誤検知防止）")
 
     except Exception as e:
         result["detail"] = str(e)[:100]
