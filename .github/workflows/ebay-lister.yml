@@ -42,7 +42,7 @@ jobs:
 
       - name: eBay出品ドラフト作成
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
           EBAY_APP_ID: ${{ secrets.EBAY_APP_ID }}
