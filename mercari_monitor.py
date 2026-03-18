@@ -241,7 +241,7 @@ def check_mercari_status(driver, url):
                     return result
 
             # ショップスで購入ボタンが見つからない → 売り切れと推定
-           result["status"] = "不明"
+            result["status"] = "不明"
             result["method"] = "shops-no-button"
             result["detail"] = "ショップス: 購入ボタンなし → 不明（誤検知防止）"
             logger.info("⚠️ ショップス: 購入ボタンなし → 不明（誤検知防止）")
