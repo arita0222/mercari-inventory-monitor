@@ -197,6 +197,19 @@ def check_mercari_status(driver, url):
         logger.info(f"商品名: {result['name']}")
 
         # ============================================
+        # 削除済み商品チェック
+        # ============================================
+        deleted = driver.find_elements(By.CSS_SELECTOR, '.titleContainer__151544dc')
+        if deleted:
+            for el in deleted:
+                if "削除" in el.text:
+                    result["status"] = "売り切れ"
+                    result["method"] = "deleted-item"
+                    result["detail"] = "商品が削除されています"
+                    logger.info("✅ 削除済み商品を検出 → 売り切れ")
+                    return result
+
+        # ============================================
         # ショップス用判定
         # ============================================
         if is_shops:
