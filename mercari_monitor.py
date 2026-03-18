@@ -892,6 +892,7 @@ def get_ebay_item_price(item_id):
         if response.status_code == 200:
             text = response.text
 
+            logger.debug(f"eBay GetItem レスポンス: {text[:500]}")
             if "<Ack>Success</Ack>" in text or "<Ack>Warning</Ack>" in text:
                 # CurrentPrice を抽出
                 price_match = re.search(r"<CurrentPrice[^>]*>([\d.]+)</CurrentPrice>", text)
