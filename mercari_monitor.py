@@ -392,7 +392,8 @@ def check_rakuma_status(driver, url):
 
     try:
         logger.info(f"ページ読み込み中: {url}")
-        driver.get(url)
+        clean_url = url.split("?")[0]
+        driver.get(clean_url)
         time.sleep(PAGE_LOAD_WAIT)
 
         # 商品名
