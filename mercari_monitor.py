@@ -205,11 +205,24 @@ def check_mercari_status(driver, url):
             try:
                 WebDriverWait(driver, 10).until(
                     EC.presence_of_element_located(
-                        (By.CSS_SELECTOR, '[data-testid="variant-purchase-button"]')
+                        (By.CSS_SELECTOR,
+                         '[data-testid="variant-purchase-button"],[data-testid="disabled-purchase-button"]')
                     )
                 )
             except Exception:
                 pass
+
+            # 売り切れボタン（disabled）を先にチェック
+            disabled_btns = driver.find_elements(
+                By.CSS_SELECTOR, '[data-testid="disabled-purchase-button"]'
+            )
+            if disabled_btns:
+                result["status"] = "売り切れ"
+                result["method"] = "shops-disabled-button"
+                result["detail"] = "ショップス: disabled-purchase-button 検出 → 売り切れ"
+                logger.info("✅ ショップス判定: 売り切れ（disabled-purchase-button）")
+                return result
+
             variant_btns = driver.find_elements(
                 By.CSS_SELECTOR, '[data-testid="variant-purchase-button"]'
             )
