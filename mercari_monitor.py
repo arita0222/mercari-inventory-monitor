@@ -1354,6 +1354,7 @@ def main():
                 # 販売中→売り切れに変わった場合のみ通知（1回だけ）
                 if status_changed:
                     result["ebay_id"] = item.get("ebay_id", "")
+                    logger.info(f"  → changed_items追加: ebay_id={result['ebay_id']}, status={result['status']}")
                     changed_items.append(result)
             else:
                 # シートなし（テスト用）の場合は売り切れなら通知
