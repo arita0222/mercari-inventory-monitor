@@ -201,11 +201,28 @@ def check_mercari_status(driver, url):
         # ============================================
         if is_shops:
             # 方法S1: variant-purchase-button（ショップス専用の購入ボタン）
+            # SPAレンダリング待機（最大10秒）
+            try:
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located(
+                        (By.CSS_SELECTOR, '[data-testid="variant-purchase-button"]')
+                    )
+                )
+            except Exception:
+                pass
             variant_btns = driver.find_elements(
                 By.CSS_SELECTOR, '[data-testid="variant-purchase-button"]'
             )
             if variant_btns:
                 btn_text = variant_btns[0].text.strip()
+                if not btn_text:
+                    try:
+                        btn_text = driver.execute_script(
+                            "return arguments[0].innerText;", variant_btns[0]
+                        ).strip()
+                    except Exception:
+                        btn_text = ""
+                logger.info(f"ショップス variant-purchase-button テキスト: '{btn_text}'"  )
                 if "購入" in btn_text:
                     result["status"] = "販売中"
                     result["method"] = "shops-variant-button"
