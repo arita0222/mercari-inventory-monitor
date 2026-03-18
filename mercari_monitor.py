@@ -1351,13 +1351,12 @@ def main():
             # 仕入れ台帳を更新
             if daichou and item["row_num"] > 0:
                 status_changed = update_daichou(daichou, item["row_num"], result)
-                # 販売中→売り切れに変わった場合のみ通知（1回だけ）
-                if status_changed:
+                # 売り切れの場合は毎回changed_itemsに追加（eBay停止リカバリのため）
+                if result["status"] == "売り切れ":
                     result["ebay_id"] = item.get("ebay_id", "")
-                    logger.info(f"  → changed_items追加: ebay_id={result['ebay_id']}, status={result['status']}")
+                    logger.info(f"  → 売り切れ検出: ebay_id={result['ebay_id']}")
                     changed_items.append(result)
             else:
-                # シートなし（テスト用）の場合は売り切れなら通知
                 if result["status"] == "売り切れ":
                     result["ebay_id"] = item.get("ebay_id", "")
                     changed_items.append(result)
