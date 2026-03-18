@@ -404,13 +404,23 @@ def check_rakuma_status(driver, url):
     }
 
     try:
-        logger.info(f"ページ読み込み中: {url}")
         clean_url = url.split("?")[0]
-        driver.get(clean_url)
-        WebDriverWait(driver, PAGE_LOAD_WAIT).until(
-            lambda d: d.execute_script("return document.readyState") == "complete"
-        )
-        time.sleep(3)
+        logger.info(f"ページ読み込み中: {clean_url}")
+        # タイムアウト時に1回リトライ
+        for attempt in range(2):
+            try:
+                driver.get(clean_url)
+                WebDriverWait(driver, PAGE_LOAD_WAIT).until(
+                    lambda d: d.execute_script("return document.readyState") == "complete"
+                )
+                time.sleep(3)
+                break
+            except Exception as retry_e:
+                if attempt == 0:
+                    logger.warning(f"ラクマ読み込み失敗、リトライ中: {retry_e}")
+                    time.sleep(5)
+                else:
+                    raise
 
         # 商品名
         try:
