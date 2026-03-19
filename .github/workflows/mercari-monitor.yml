@@ -7,7 +7,12 @@ on:
     # 毎日 夜9時（JST） = UTC 12:00
     - cron: '0 12 * * *'
   workflow_dispatch:
-    # 手動実行も可能
+    inputs:
+      test_url:
+        description: 'テスト用URL（指定するとそのURLのみチェック）'
+        required: false
+        type: string
+        default: 
 
 jobs:
   monitor:
@@ -44,4 +49,5 @@ jobs:
           EBAY_AUTH_TOKEN: ${{ secrets.EBAY_AUTH_TOKEN }}
           LINE_CHANNEL_TOKEN: ${{ secrets.LINE_CHANNEL_TOKEN }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          TEST_URL: ${{ github.event.inputs.test_url }}
         run: python mercari_monitor.py

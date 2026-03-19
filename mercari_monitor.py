@@ -1317,7 +1317,13 @@ def main():
             logger.info("⏸️ 監視機能が無効です。終了します。")
             return
 
-        items = get_urls_from_sheet(daichou)
+        # テスト用URL（GitHub Actions から TEST_URL 環境変数で指定可能）
+        test_url = os.environ.get("TEST_URL", "").strip()
+        if test_url:
+            logger.info(f"🧪 テストモード: {test_url} のみチェック")
+            items = [{"row_num": 0, "url": test_url, "source": "テスト", "ebay_id": ""}]
+        else:
+            items = get_urls_from_sheet(daichou)
 
         # シートにURLがない場合はテスト用URLを使用
         if not items:
