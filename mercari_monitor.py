@@ -631,7 +631,16 @@ def check_amazon_status(driver, url):
         WebDriverWait(driver, PAGE_LOAD_WAIT).until(
             lambda d: d.execute_script("return document.readyState") == "complete"
         )
-        time.sleep(3)
+        time.sleep(5)
+
+        # ロボット判定チェック
+        page_src = driver.page_source
+        if "robot" in page_src.lower() or "captcha" in page_src.lower() or "Amazon.co.jp" == driver.title.strip():
+            logger.warning("Amazon: ロボット判定 or ページ未読み込み → 不明")
+            result["status"] = "不明"
+            result["method"] = "amazon-blocked"
+            result["detail"] = "Amazonにブロックされた可能性 → 不明"
+            return result
 
         # 商品名取得
         try:
