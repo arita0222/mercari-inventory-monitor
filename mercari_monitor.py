@@ -277,6 +277,28 @@ def check_mercari_status(driver, url):
                 logger.info("✅ ショップス判定: 売り切れ（ページソース検出）")
                 return result
             logger.info("ショップス: variant-purchase-button なし → checkout-button へ")
+            # ボタンテキストで判定
+            all_buttons = driver.find_elements(By.CSS_SELECTOR, 'button')
+            for btn in all_buttons:
+                try:
+                    btn_text = btn.text.strip()
+                    if not btn_text:
+                        btn_text = driver.execute_script("return arguments[0].innerText;", btn).strip()
+                except Exception:
+                    continue
+                if "\u8cfc\u5165\u624b\u7d9a\u304d\u3078" in btn_text:
+                    result["status"] = "\u8ca9\u58f2\u4e2d"
+                    result["method"] = "shops-button-text"
+                    result["detail"] = "\u30dc\u30bf\u30f3\u30c6\u30ad\u30b9\u30c8\u300c\u8cfc\u5165\u624b\u7d9a\u304d\u3078\u300d\u691c\u51fa"
+                    logger.info("\u2705 \u30b7\u30e7\u30c3\u30d7\u30b9\u5224\u5b9a: \u8ca9\u58f2\u4e2d\uff08\u30dc\u30bf\u30f3\u30c6\u30ad\u30b9\u30c8\uff09")
+                    return result
+                if "\u58f2\u308a\u5207\u308c\u307e\u3057\u305f" in btn_text:
+                    result["status"] = "\u58f2\u308a\u5207\u308c"
+                    result["method"] = "shops-button-text"
+                    result["detail"] = "\u30dc\u30bf\u30f3\u30c6\u30ad\u30b9\u30c8\u300c\u58f2\u308a\u5207\u308c\u307e\u3057\u305f\u300d\u691c\u51fa"
+                    logger.info("\u2705 \u30b7\u30e7\u30c3\u30d7\u30b9\u5224\u5b9a: \u58f2\u308a\u5207\u308c\uff08\u30dc\u30bf\u30f3\u30c6\u30ad\u30b9\u30c8\uff09")
+                    return result
+            # ボタンテキストで判定
 
             # 方法S2: checkout-button（フォールバック）
             checkout_btns = driver.find_elements(
