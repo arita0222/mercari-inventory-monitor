@@ -216,7 +216,7 @@ def check_mercari_status(driver, url):
             # 方法S1: variant-purchase-button（ショップス専用の購入ボタン）
             # SPAレンダリング待機（最大10秒）
             try:
-                WebDriverWait(driver, 10).until(
+                WebDriverWait(driver, 20).until(
                     EC.presence_of_element_located(
                         (By.CSS_SELECTOR,
                          '[data-testid="variant-purchase-button"],[data-testid="disabled-purchase-button"]')
