@@ -262,6 +262,20 @@ def check_mercari_status(driver, url):
                     logger.info(f"✅ ショップス判定: 売り切れ（ボタン='{btn_text}'）")
                     return result
 
+            # DOMで見つからない場合はページソースで直接チェック
+            page_src = driver.page_source
+            if 'data-testid="variant-purchase-button"' in page_src:
+                result["status"] = "販売中"
+                result["method"] = "shops-variant-button-src"
+                result["detail"] = "ページソースにvariant-purchase-button検出 → 販売中"
+                logger.info("✅ ショップス判定: 販売中（ページソース検出）")
+                return result
+            if 'data-testid="disabled-purchase-button"' in page_src:
+                result["status"] = "売り切れ"
+                result["method"] = "shops-disabled-button-src"
+                result["detail"] = "ページソースにdisabled-purchase-button検出 → 売り切れ"
+                logger.info("✅ ショップス判定: 売り切れ（ページソース検出）")
+                return result
             logger.info("ショップス: variant-purchase-button なし → checkout-button へ")
 
             # 方法S2: checkout-button（フォールバック）
