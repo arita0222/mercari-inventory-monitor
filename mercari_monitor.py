@@ -136,6 +136,8 @@ def detect_platform(url):
         return "rakuma"
     elif "paypayfleamarket" in url or "yahoo" in url:
         return "yahoo_fleamarket"
+    elif "amazon.co.jp" in url:
+        return "amazon"
     return "unknown"
 
 
@@ -601,6 +603,77 @@ def check_yahoo_fleamarket_status(driver, url):
 # 統合チェック関数
 # ============================================================
 
+def check_amazon_status(driver, url):
+    """
+    Amazonの商品ステータスを判定
+
+    【判定ロジック】
+    1. ページが存在しない（404等）→ 売り切れ
+    2. 「カートに入れる」または「今すぐ買う」ボタンが存在 → 販売中
+    3. どちらもない → 売り切れ
+    """
+    result = {
+        "url": url,
+        "platform": "amazon",
+        "status": "エラー",
+        "name": "",
+        "method": "",
+        "detail": "",
+    }
+    try:
+        # URLからDPIDのみ抽出してクリーンなURLに
+        import re
+        dp_match = re.search(r'/dp/([A-Z0-9]+)', url)
+        clean_url = f"https://www.amazon.co.jp/dp/{dp_match.group(1)}" if dp_match else url
+
+        logger.info(f"ページ読み込み中: {clean_url}")
+        driver.get(clean_url)
+        WebDriverWait(driver, PAGE_LOAD_WAIT).until(
+            lambda d: d.execute_script("return document.readyState") == "complete"
+        )
+        time.sleep(3)
+
+        # 商品名取得
+        try:
+            title_el = driver.find_element(By.CSS_SELECTOR, '#productTitle')
+            result["name"] = title_el.text.strip()[:100]
+        except NoSuchElementException:
+            result["name"] = driver.title[:100]
+        logger.info(f"商品名: {result['name']}")
+
+        # ページ削除チェック
+        page_src = driver.page_source
+        if "申し訳ありませんが、お探しのページは見つかりませんでした" in page_src or            "Page Not Found" in page_src or            "dogImage" in page_src:
+            result["status"] = "売り切れ"
+            result["method"] = "amazon-page-not-found"
+            result["detail"] = "ページが存在しない → 売り切れ"
+            logger.info("✅ Amazon判定: 売り切れ（ページ削除）")
+            return result
+
+        # カートに入れる / 今すぐ買う ボタンチェック
+        buy_buttons = driver.find_elements(
+            By.CSS_SELECTOR, '#add-to-cart-button, #buy-now-button'
+        )
+        if buy_buttons:
+            result["status"] = "販売中"
+            result["method"] = "amazon-buy-button"
+            result["detail"] = "カートに入れる/今すぐ買うボタン検出 → 販売中"
+            logger.info("✅ Amazon判定: 販売中（購入ボタン検出）")
+            return result
+
+        # ボタンなし → 売り切れ
+        result["status"] = "売り切れ"
+        result["method"] = "amazon-no-button"
+        result["detail"] = "購入ボタンなし → 売り切れ"
+        logger.info("✅ Amazon判定: 売り切れ（購入ボタンなし）")
+
+    except Exception as e:
+        result["detail"] = str(e)[:100]
+        logger.error(f"Amazonエラー: {e}")
+
+    return result
+
+
 def check_item_status(driver, url):
     """URL からプラットフォームを自動判定してステータスをチェック"""
     platform = detect_platform(url)
@@ -611,6 +684,8 @@ def check_item_status(driver, url):
         return check_rakuma_status(driver, url)
     elif platform == "yahoo_fleamarket":
         return check_yahoo_fleamarket_status(driver, url)
+    elif platform == "amazon":
+        return check_amazon_status(driver, url)
     else:
         return {
             "url": url,
@@ -1141,6 +1216,7 @@ def process_ebay_stop(items_to_stop):
 # プラットフォーム名変換（内部名 → 表示名）
 PLATFORM_DISPLAY = {
     "mercari": "メルカリ",
+    "amazon": "Amazon",
     "rakuma": "ラクマ",
     "yahoo_fleamarket": "ヤフーフリマ",
     "unknown": "不明",
