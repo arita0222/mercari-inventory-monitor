@@ -963,11 +963,17 @@ def get_urls_from_sheet(daichou):
                     ebay_id = daichou.cell(row_num, COL_EBAY_ID).value or ""
                 except Exception:
                     ebay_id = ""
+                # O列（前回ステータス）も取得
+                try:
+                    prev_status = daichou.cell(row_num, COL_PREV_STATUS).value or ""
+                except Exception:
+                    prev_status = ""
                 items.append({
                     "row_num": row_num,
                     "url": url,
                     "source": source,
                     "ebay_id": ebay_id.strip(),
+                    "prev_status": prev_status,
                 })
 
         logger.info(f"仕入れ台帳から {len(items)} 件のURLを取得")
@@ -1664,7 +1670,7 @@ def main():
         for i, item in enumerate(items):
             logger.info(f"\n--- [{i+1}/{len(items)}] ---")
             result = check_item_status(driver, item["url"])
-            result["prev_status"] = prev_status
+            result["prev_status"] = item.get("prev_status", "")
             results.append(result)
 
             logger.info(
