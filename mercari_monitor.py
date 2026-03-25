@@ -811,27 +811,27 @@ COL_ID = 1           # A: ID
 COL_SOURCE = 2       # B: 仕入れ先
 COL_NAME = 3         # C: 商品名
 COL_URL = 4          # D: 仕入れ元URL
-COL_EBAY_ID = 5      # E: eBay ItemID
-COL_COST = 6         # F: 仕入金額（円）
-COL_EBAY_PRICE = 7   # G: eBay販売金額（$）
-COL_EBAY_PRICE_JPY = 8  # H: eBay販売金額（円）
-COL_SHIPPING = 9     # I: 送料（円）
-COL_DEST = 10        # J: 販売先（アメリカ/その他）
-COL_ORIGIN = 11      # K: 原産国（中国/その他）
-COL_EBAY_FEE = 12    # L: eBay手数料（円）※数式
-COL_TARIFF = 13      # M: 通常関税（円）※数式
-COL_CN_TARIFF = 14   # N: 中国追加関税（円）※数式
-COL_PROFIT = 15      # O: 利益（円）※数式
-COL_PREV_STATUS = 16 # P: 前回ステータス
-COL_EBAY_EDIT_URL = 17  # Q: eBay編集リンク
-COL_SOLD_COUNT = 18  # R: 売り切れ連続
-COL_UNKNOWN_COUNT = 19 # S: 不明連続回数
-COL_LAST_CHECK = 20  # T: 最終チェック日時
-COL_LAST_NOTIFY = 21 # U: 最終通知日時
-COL_LAST_NOTIFY_ST = 22  # V: 最終通知ステータス
-COL_HTTP_STATUS = 23 # W: 最終HTTPステータス
-COL_MEMO = 24        # X: メモ
-COL_ACTION = 25      # Y: 対応要否
+COL_EBAY_EDIT_URL = 5   # E: eBay編集リンク
+COL_EBAY_ID = 6      # F: eBay ItemID
+COL_COST = 7         # G: 仕入金額（円）
+COL_EBAY_PRICE = 8   # H: eBay販売金額（$）
+COL_EBAY_PRICE_JPY = 9  # I: eBay販売金額（円）
+COL_SHIPPING = 10    # J: 送料（円）
+COL_DEST = 11        # K: 販売先（アメリカ/その他）
+COL_ORIGIN = 12      # L: 原産国（中国/その他）
+COL_EBAY_FEE = 13    # M: eBay手数料（円）※数式
+COL_TARIFF = 14      # N: 通常関税（円）※数式
+COL_CN_TARIFF = 15   # O: 中国追加関税（円）※数式
+COL_PROFIT = 16      # P: 利益（円）※数式
+COL_PREV_STATUS = 17 # Q: 前回ステータス
+COL_SOLD_COUNT = 19  # S: 売り切れ連続
+COL_UNKNOWN_COUNT = 20 # T: 不明連続回数
+COL_LAST_CHECK = 21  # U: 最終チェック日時
+COL_LAST_NOTIFY = 22 # V: 最終通知日時
+COL_LAST_NOTIFY_ST = 23  # W: 最終通知ステータス
+COL_HTTP_STATUS = 24 # X: 最終HTTPステータス
+COL_MEMO = 25        # Y: メモ
+COL_ACTION = 26      # Z: 対応要否
 
 
 def init_gspread():
@@ -1063,6 +1063,19 @@ def update_daichou(daichou, row_num, result):
         # W: 最終HTTPステータス（200 = 正常アクセス）
         http_status = 200 if new_status != "エラー" else 0
         daichou.update_cell(row_num, COL_HTTP_STATUS, http_status)
+        # Q: eBay編集リンク（eBay ItemIDがある場合のみ）
+        try:
+            ebay_id_val = daichou.cell(row_num, COL_EBAY_ID).value or ""
+            if ebay_id_val:
+                edit_url = (
+                    f"https://www.ebay.com/lstng?mode=ReviseItem"
+                    f"&itemId={ebay_id_val}"
+                    f"&sr=wn"
+                    f"&ReturnURL=https%3A%2F%2Fwww.ebay.com%2Fsh%2Flst%2Factive%3Foffset%3D0"
+                )
+                daichou.update_cell(row_num, COL_EBAY_EDIT_URL, edit_url)
+        except Exception as e:
+            logger.error(f"  行{row_num} 編集リンク更新失敗: {e}")
 
         # F: 仕入れ価格変動チェック（販売中のみ）
         new_price = result.get("price")
