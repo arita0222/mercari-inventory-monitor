@@ -133,6 +133,8 @@ def detect_platform(url):
     if "mercari" in url:
         return "mercari"
     elif "fril.jp" in url or "rakuma" in url:
+    elif "auctions.yahoo.co.jp" in url:
+        return "yahuoku"
         return "rakuma"
     elif "paypayfleamarket" in url or "yahoo" in url:
         return "yahoo_fleamarket"
@@ -166,6 +168,7 @@ def check_mercari_status(driver, url):
         "platform": "mercari",
         "status": "エラー",
         "name": "",
+        "price": None,
         "method": "",
         "detail": "",
     }
@@ -197,6 +200,19 @@ def check_mercari_status(driver, url):
                 result["name"] = driver.title.replace(" - メルカリ", "")
 
         logger.info(f"商品名: {result['name']}")
+        # --- 価格を取得 ---
+        try:
+            price_el = driver.find_element(By.CSS_SELECTOR, '[data-testid="price"]')
+            price_text = price_el.text.replace("¥", "").replace(",", "").strip()
+            result["price"] = int(price_text) if price_text.isdigit() else None
+        except NoSuchElementException:
+            try:
+                price_el = driver.find_element(By.CSS_SELECTOR, 'meta[property="og:price:amount"]')
+                price_text = price_el.get_attribute("content").replace(",", "").strip()
+                result["price"] = int(float(price_text)) if price_text else None
+            except NoSuchElementException:
+                result["price"] = None
+        logger.info(f"価格: {result['price']}円")
 
         # ============================================
         # 削除済み商品チェック
@@ -437,6 +453,7 @@ def check_rakuma_status(driver, url):
         "platform": "rakuma",
         "status": "エラー",
         "name": "",
+        "price": None,
         "method": "",
         "detail": "",
     }
@@ -468,6 +485,14 @@ def check_rakuma_status(driver, url):
             result["name"] = driver.title
 
         logger.info(f"商品名: {result['name']}")
+        # --- 価格を取得 ---
+        try:
+            price_el = driver.find_element(By.CSS_SELECTOR, 'meta[property="og:price:amount"]')
+            price_text = price_el.get_attribute("content").replace(",", "").strip()
+            result["price"] = int(float(price_text)) if price_text else None
+        except NoSuchElementException:
+            result["price"] = None
+        logger.info(f"価格: {result['price']}円")
 
         # ============================================
         # 判定方法1: SOLD OUTバッジ
@@ -517,7 +542,63 @@ def check_rakuma_status(driver, url):
 # ============================================================
 # ヤフーフリマ判定
 # ============================================================
-
+def check_yahuoku_status(driver, url):
+    """
+    Yahoo!オークションの商品ステータスを判定
+    """
+    result = {
+        "url": url,
+        "platform": "yahuoku",
+        "status": "エラー",
+        "name": "",
+        "price": None,
+        "method": "",
+        "detail": "",
+    }
+    try:
+        logger.info(f"ページ読み込み中: {url}")
+        driver.get(url)
+        time.sleep(PAGE_LOAD_WAIT)
+        # 商品名
+        try:
+            h1 = driver.find_element(By.CSS_SELECTOR, "h1.ProductTitle__text")
+            result["name"] = h1.text.strip()
+        except NoSuchElementException:
+            result["name"] = driver.title
+        logger.info(f"商品名: {result['name']}")
+        # 価格（現在価格）
+        try:
+            price_el = driver.find_element(By.CSS_SELECTOR, ".Price__value")
+            price_text = price_el.text.replace("円", "").replace(",", "").strip()
+            result["price"] = int(price_text) if price_text.isdigit() else None
+        except NoSuchElementException:
+            result["price"] = None
+        logger.info(f"価格: {result['price']}円")
+        # ステータス判定
+        try:
+            bid_btn = driver.find_elements(By.CSS_SELECTOR, ".Auction__bid, .Auction__buynow")
+            if bid_btn:
+                result["status"] = "販売中"
+                result["method"] = "bid-button"
+                result["detail"] = "入札/即決ボタンあり"
+            else:
+                ended = driver.find_elements(By.CSS_SELECTOR, ".Auction__ended, .AuctionStatus__ended")
+                if ended:
+                    result["status"] = "売り切れ"
+                    result["method"] = "ended-badge"
+                    result["detail"] = "オークション終了"
+                else:
+                    result["status"] = "不明"
+                    result["method"] = "fallback"
+                    result["detail"] = "判定できず"
+        except Exception as e:
+            result["status"] = "不明"
+            result["detail"] = str(e)[:100]
+    except Exception as e:
+        logger.error(f"Yahoo!オークション チェックエラー: {e}")
+        result["status"] = "エラー"
+        result["detail"] = str(e)[:100]
+    return result
 def check_yahoo_fleamarket_status(driver, url):
     """
     ヤフーフリマの商品ステータスを判定
@@ -533,6 +614,7 @@ def check_yahoo_fleamarket_status(driver, url):
         "platform": "yahoo_fleamarket",
         "status": "エラー",
         "name": "",
+        "price": None,
         "method": "",
         "detail": "",
     }
@@ -555,6 +637,14 @@ def check_yahoo_fleamarket_status(driver, url):
             result["name"] = driver.title
 
         logger.info(f"商品名: {result['name']}")
+        # --- 価格を取得 ---
+        try:
+            price_el = driver.find_element(By.CSS_SELECTOR, 'meta[property="og:price:amount"]')
+            price_text = price_el.get_attribute("content").replace(",", "").strip()
+            result["price"] = int(float(price_text)) if price_text else None
+        except NoSuchElementException:
+            result["price"] = None
+        logger.info(f"価格: {result['price']}円")
 
         # ============================================
         # 判定方法1: 購入ボタンの有無
@@ -693,6 +783,8 @@ def check_item_status(driver, url):
         return check_rakuma_status(driver, url)
     elif platform == "yahoo_fleamarket":
         return check_yahoo_fleamarket_status(driver, url)
+    elif platform == "yahuoku":
+        return check_yahuoku_status(driver, url)
     elif platform == "amazon":
         return check_amazon_status(driver, url)
     else:
@@ -723,22 +815,24 @@ COL_URL = 4          # D: 仕入れ元URL
 COL_EBAY_ID = 5      # E: eBay ItemID
 COL_COST = 6         # F: 仕入金額（円）
 COL_EBAY_PRICE = 7   # G: eBay販売金額（$）
-COL_SHIPPING = 8     # H: 送料（円）
-COL_DEST = 9         # I: 販売先（アメリカ/その他）
-COL_ORIGIN = 10      # J: 原産国（中国/その他）
-COL_EBAY_FEE = 11    # K: eBay手数料（円）※数式
-COL_TARIFF = 12      # L: 通常関税（円）※数式
-COL_CN_TARIFF = 13   # M: 中国追加関税（円）※数式
-COL_PROFIT = 14      # N: 利益（円）※数式
-COL_PREV_STATUS = 15 # O: 前回ステータス
-COL_SOLD_COUNT = 16  # P: 売り切れ連続
-COL_UNKNOWN_COUNT = 17 # Q: 不明連続回数
-COL_LAST_CHECK = 18  # R: 最終チェック日時
-COL_LAST_NOTIFY = 19 # S: 最終通知日時
-COL_LAST_NOTIFY_ST = 20  # T: 最終通知ステータス
-COL_HTTP_STATUS = 21 # U: 最終HTTPステータス
-COL_MEMO = 22        # V: メモ
-COL_ACTION = 23      # W: 対応要否
+COL_EBAY_PRICE_JPY = 8  # H: eBay販売金額（円）
+COL_SHIPPING = 9     # I: 送料（円）
+COL_DEST = 10        # J: 販売先（アメリカ/その他）
+COL_ORIGIN = 11      # K: 原産国（中国/その他）
+COL_EBAY_FEE = 12    # L: eBay手数料（円）※数式
+COL_TARIFF = 13      # M: 通常関税（円）※数式
+COL_CN_TARIFF = 14   # N: 中国追加関税（円）※数式
+COL_PROFIT = 15      # O: 利益（円）※数式
+COL_PREV_STATUS = 16 # P: 前回ステータス
+COL_EBAY_EDIT_URL = 17  # Q: eBay編集リンク
+COL_SOLD_COUNT = 18  # R: 売り切れ連続
+COL_UNKNOWN_COUNT = 19 # S: 不明連続回数
+COL_LAST_CHECK = 20  # T: 最終チェック日時
+COL_LAST_NOTIFY = 21 # U: 最終通知日時
+COL_LAST_NOTIFY_ST = 22  # V: 最終通知ステータス
+COL_HTTP_STATUS = 23 # W: 最終HTTPステータス
+COL_MEMO = 24        # X: メモ
+COL_ACTION = 25      # Y: 対応要否
 
 
 def init_gspread():
@@ -940,11 +1034,13 @@ def update_daichou(daichou, row_num, result):
             status_changed = True  # 通知は初回のみ
         elif new_status == "売り切れ" and prev_status == "売り切れ":
             status_changed = True  # eBay停止チェックのため毎回Trueにする
+        elif new_status == "販売中" and prev_status == "売り切れ":
+            status_changed = True  # 売り切れ→販売中：eBay再出品トリガー
 
         # --- 各列を更新 ---
-        # C: 商品名（取得できた場合のみ）
+        # C: 商品名（販売中の場合のみ上書き。売り切れ・エラー時は保持）
         item_name = result.get("name", "")
-        if item_name:
+        if item_name and new_status == "販売中":
             daichou.update_cell(row_num, COL_NAME, item_name[:100])
 
         # G: 前回ステータス → 今回のステータスで上書き
@@ -959,9 +1055,22 @@ def update_daichou(daichou, row_num, result):
         # J: 最終チェック日時
         daichou.update_cell(row_num, COL_LAST_CHECK, now)
 
-        # M: 最終HTTPステータス（200 = 正常アクセス）
+        # W: 最終HTTPステータス（200 = 正常アクセス）
         http_status = 200 if new_status != "エラー" else 0
         daichou.update_cell(row_num, COL_HTTP_STATUS, http_status)
+
+        # F: 仕入れ価格変動チェック（販売中のみ）
+        new_price = result.get("price")
+        if new_price and new_status == "販売中":
+            try:
+                current_cost = daichou.cell(row_num, COL_COST).value
+                current_cost = int(float(str(current_cost).replace(",", ""))) if current_cost else None
+                if current_cost is not None and new_price != current_cost:
+                    daichou.update_cell(row_num, COL_COST, new_price)
+                    daichou.update_cell(row_num, COL_MEMO, f"仕入れ価格変更: {current_cost}円→{new_price}円 ({now})")
+                    logger.info(f"  行{row_num} 仕入れ価格更新: {current_cost}円 → {new_price}円")
+            except Exception as e:
+                logger.error(f"  行{row_num} 仕入れ価格更新失敗: {e}")
 
         logger.info(
             f"行 {row_num} 更新: {new_status} "
@@ -1188,6 +1297,92 @@ def end_ebay_listing(item_id):
         return False, str(e)[:100]
 
 
+def relist_ebay_item(item_id):
+    """
+    eBay Trading API で出品を再開する（RelistFixedPriceItem）
+    売り切れ→販売中に戻った場合に呼ぶ
+    """
+    import requests
+    if not EBAY_AUTH_TOKEN or not item_id:
+        return False, "トークンまたはItemIDがありません"
+    try:
+        xml_request = f"""<?xml version="1.0" encoding="utf-8"?>
+<RelistFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+    <RequesterCredentials>
+        <eBayAuthToken>{EBAY_AUTH_TOKEN}</eBayAuthToken>
+    </RequesterCredentials>
+    <Item>
+        <ItemID>{item_id}</ItemID>
+    </Item>
+</RelistFixedPriceItemRequest>"""
+        headers = {
+            "X-EBAY-API-COMPATIBILITY-LEVEL": "1209",
+            "X-EBAY-API-CALL-NAME": "RelistFixedPriceItem",
+            "X-EBAY-API-SITEID": "0",
+            "X-EBAY-API-APP-NAME": EBAY_APP_ID,
+            "X-EBAY-API-DEV-NAME": EBAY_DEV_ID,
+            "X-EBAY-API-CERT-NAME": EBAY_CERT_ID,
+            "Content-Type": "text/xml;charset=UTF-8",
+        }
+        response = requests.post(EBAY_API_URL, headers=headers, data=xml_request.encode("utf-8"))
+        if response.status_code == 200:
+            response_text = response.text
+            if "<Ack>Success</Ack>" in response_text or "<Ack>Warning</Ack>" in response_text:
+                import re
+                new_id_match = re.search(r"<ItemID>(\d+)</ItemID>", response_text)
+                new_item_id = new_id_match.group(1) if new_id_match else item_id
+                logger.info(f"✅ eBay再出品成功: ItemID={new_item_id}")
+                return True, new_item_id
+            elif "<Ack>Failure</Ack>" in response_text:
+                import re
+                error_match = re.search(r"<LongMessage>(.*?)</LongMessage>", response_text)
+                error_msg = error_match.group(1) if error_match else "不明なエラー"
+                logger.error(f"❌ eBay再出品失敗: ItemID={item_id}, エラー={error_msg}")
+                return False, error_msg
+            else:
+                return False, f"応答不明: {response_text[:200]}"
+        else:
+            return False, f"HTTPエラー: {response.status_code}"
+    except Exception as e:
+        logger.error(f"❌ eBay再出品通信エラー: {e}")
+        return False, str(e)[:100]
+
+
+def process_ebay_relist(items_to_relist, daichou):
+    """
+    売り切れ→販売中に戻った商品をeBayで再出品する
+    items_to_relist: [{"ebay_id": "xxx", "row_num": N, "name": "商品名"}, ...]
+    """
+    if not items_to_relist:
+        return []
+    results = []
+    logger.info(f"eBay再出品処理: {len(items_to_relist)}件")
+    for item in items_to_relist:
+        ebay_id = item.get("ebay_id", "")
+        row_num = item.get("row_num", 0)
+        name = item.get("name", "不明")
+        if not ebay_id:
+            continue
+        success, result = relist_ebay_item(ebay_id)
+        if success:
+            new_item_id = result
+            # E列のeBay ItemIDを新しいIDで更新
+            try:
+                daichou.update_cell(row_num, COL_EBAY_ID, new_item_id)
+                # Q列のeBay編集リンクも更新
+                edit_url = f"https://www.ebay.com/sh/lst/active?itemId={new_item_id}"
+                daichou.update_cell(row_num, COL_EBAY_EDIT_URL, edit_url)
+            except Exception as e:
+                logger.error(f"再出品後のID更新失敗: {e}")
+            results.append({"name": name, "ebay_id": new_item_id, "success": True})
+            logger.info(f"  ✅ 再出品: {name} → 新ItemID={new_item_id}")
+        else:
+            results.append({"name": name, "ebay_id": ebay_id, "success": False, "error": result})
+            logger.error(f"  ❌ 再出品失敗: {name} → {result}")
+        time.sleep(1)
+    return results
+
+
 def process_ebay_stop(items_to_stop):
     """
     売り切れ商品のeBay出品を一括停止する
@@ -1227,7 +1422,9 @@ PLATFORM_DISPLAY = {
     "mercari": "メルカリ",
     "amazon": "Amazon",
     "rakuma": "ラクマ",
+    "yahuoku": "ヤフオク",
     "yahoo_fleamarket": "ヤフーフリマ",
+    "yahuoku": "ヤフオク",
     "unknown": "不明",
 }
 
@@ -1468,6 +1665,7 @@ def main():
         for i, item in enumerate(items):
             logger.info(f"\n--- [{i+1}/{len(items)}] ---")
             result = check_item_status(driver, item["url"])
+            result["prev_status"] = prev_status
             results.append(result)
 
             logger.info(
@@ -1513,6 +1711,21 @@ def main():
                         logger.info(f"  eBay {icon} ItemID={er['ebay_id']}: {er['message']}")
             else:
                 logger.info("設定: 編集リンクのみ（自動停止なし）")
+
+        # 売り切れ→販売中に戻った商品をeBay再出品
+        relist_targets = [
+            item for item in results
+            if item.get("status") == "販売中"
+            and item.get("prev_status") == "売り切れ"
+            and item.get("ebay_id")
+        ]
+        relist_results = []
+        if relist_targets:
+            logger.info(f"\n🔄 再出品対象: {len(relist_targets)} 件")
+            relist_results = process_ebay_relist(relist_targets, daichou)
+            for rr in relist_results:
+                icon = "✅" if rr["success"] else "❌"
+                logger.info(f"  再出品 {icon} {rr['name']}: ItemID={rr['ebay_id']}")
 
         # 通知送信（設定に応じてLINE/メール/両方）
         if changed_items:
