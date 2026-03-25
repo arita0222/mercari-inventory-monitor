@@ -824,14 +824,14 @@ COL_TARIFF = 14      # N: 通常関税（円）※数式
 COL_CN_TARIFF = 15   # O: 中国追加関税（円）※数式
 COL_PROFIT = 16      # P: 利益（円）※数式
 COL_PREV_STATUS = 17 # Q: 前回ステータス
-COL_SOLD_COUNT = 19  # S: 売り切れ連続
-COL_UNKNOWN_COUNT = 20 # T: 不明連続回数
-COL_LAST_CHECK = 21  # U: 最終チェック日時
-COL_LAST_NOTIFY = 22 # V: 最終通知日時
-COL_LAST_NOTIFY_ST = 23  # W: 最終通知ステータス
-COL_HTTP_STATUS = 24 # X: 最終HTTPステータス
-COL_MEMO = 25        # Y: メモ
-COL_ACTION = 26      # Z: 対応要否
+COL_SOLD_COUNT = 18  # R: 売り切れ連続
+COL_UNKNOWN_COUNT = 19 # S: 不明連続回数
+COL_LAST_CHECK = 20  # T: 最終チェック日時
+COL_LAST_NOTIFY = 21 # U: 最終通知日時
+COL_LAST_NOTIFY_ST = 22  # V: 最終通知ステータス
+COL_HTTP_STATUS = 23 # W: 最終HTTPステータス
+COL_MEMO = 24        # X: メモ
+COL_ACTION = 25      # Y: 対応要否
 
 
 def init_gspread():
