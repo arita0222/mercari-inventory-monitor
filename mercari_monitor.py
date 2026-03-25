@@ -132,16 +132,15 @@ def detect_platform(url):
     """URL からプラットフォームを自動判定"""
     if "mercari" in url:
         return "mercari"
-    elif "fril.jp" in url or "rakuma" in url:
     elif "auctions.yahoo.co.jp" in url:
         return "yahuoku"
+    elif "fril.jp" in url or "rakuma" in url:
         return "rakuma"
     elif "paypayfleamarket" in url or "yahoo" in url:
         return "yahoo_fleamarket"
     elif "amazon.co.jp" in url:
         return "amazon"
     return "unknown"
-
 
 # ============================================================
 # メルカリ判定（修正版：3段階フォールバック）
