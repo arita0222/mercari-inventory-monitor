@@ -1678,7 +1678,8 @@ def main():
 
         # 各URLをチェック
         results = []
-        changed_items = []  # 売り切れ商品
+        changed_items = []  # 通知対象（初回売り切れのみ）
+        ebay_stop_items = []  # eBay停止対象（売り切れ毎回）
 
         for i, item in enumerate(items):
             logger.info(f"\n--- [{i+1}/{len(items)}] ---")
@@ -1694,18 +1695,26 @@ def main():
             # 仕入れ台帳を更新
             if daichou and item["row_num"] > 0:
                 status_changed = update_daichou(daichou, item["row_num"], result)
-                # 売り切れの場合はebay_idがある場合のみchanged_itemsに追加
+                result["ebay_id"] = item.get("ebay_id", "")
+                result["prev_status"] = item.get("prev_status", "")
                 if result["status"] == "売り切れ":
-                    result["ebay_id"] = item.get("ebay_id", "")
                     if result["ebay_id"]:
+                        ebay_stop_items.append(result)
                         logger.info(f"  → eBay停止対象: ebay_id={result['ebay_id']}")
+                    # 通知は初回のみ（販売中→売り切れ）
+                    if result["prev_status"] != "売り切れ":
                         changed_items.append(result)
+                        logger.info(f"  → 初回売り切れ通知対象")
                     else:
-                        logger.info(f"  → eBay ItemIDなし、スキップ")
+                        logger.info(f"  → 既に売り切れ通知済み、スキップ")
             else:
+                result["ebay_id"] = item.get("ebay_id", "")
+                result["prev_status"] = item.get("prev_status", "")
                 if result["status"] == "売り切れ":
-                    result["ebay_id"] = item.get("ebay_id", "")
-                    changed_items.append(result)
+                    if result["ebay_id"]:
+                        ebay_stop_items.append(result)
+                    if result.get("prev_status") != "売り切れ":
+                        changed_items.append(result)
 
             # チェックログに追記（売り切れのみ）
             if log_sheet and result["status"] == "売り切れ":
@@ -1717,12 +1726,12 @@ def main():
 
         # 売り切れ商品のeBay出品を自動停止（設定に応じて）
         ebay_results = []
-        if changed_items:
-            logger.info(f"\n🔔 売り切れ検出: {len(changed_items)} 件")
+        if ebay_stop_items:
+            logger.info(f"\n🔔 売り切れ検出: {len(ebay_stop_items)} 件")
 
             if settings["sold_action"] == 1:
                 # 自動停止
-                ebay_results = process_ebay_stop(changed_items)
+                ebay_results = process_ebay_stop(ebay_stop_items)
                 if ebay_results:
                     for er in ebay_results:
                         icon = "✅" if er["success"] else "❌"
@@ -1746,6 +1755,7 @@ def main():
                 logger.info(f"  再出品 {icon} {rr['name']}: ItemID={rr['ebay_id']}")
 
         # 通知送信（設定に応じてLINE/メール/両方）
+        # 初回売り切れがある場合のみ通知（eBay停止結果も含む）
         if changed_items:
             send_notifications(changed_items, ebay_results, settings["notify_method"])
         else:
