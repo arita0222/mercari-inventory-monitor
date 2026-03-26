@@ -1301,6 +1301,10 @@ def end_ebay_listing(item_id):
                 import re
                 error_match = re.search(r"<LongMessage>(.*?)</LongMessage>", response_text)
                 error_msg = error_match.group(1) if error_match else "不明なエラー"
+                # 既に停止済みの場合は成功として扱う
+                if "already been closed" in error_msg or "already ended" in error_msg.lower():
+                    logger.info(f"✅ eBay出品は既に停止済み: ItemID={item_id}")
+                    return True, "既に停止済み"
                 logger.error(f"❌ eBay出品停止失敗: ItemID={item_id}, エラー={error_msg}")
                 return False, error_msg
             else:
