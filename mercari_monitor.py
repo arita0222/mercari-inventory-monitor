@@ -1706,6 +1706,7 @@ def main():
                         ebay_stop_items.append(result)
                         logger.info(f"  → eBay停止対象: ebay_id={result['ebay_id']}")
                     # 通知は初回のみ（販売中→売り切れ）
+                    logger.info(f"  → prev_status='{result['prev_status']}', ebay_id={result['ebay_id']}")
                     if result["prev_status"] != "売り切れ":
                         changed_items.append(result)
                         logger.info(f"  → 初回売り切れ通知対象")
