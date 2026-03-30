@@ -1662,7 +1662,32 @@ def main():
         test_url = os.environ.get("TEST_URL", "").strip()
         if test_url:
             logger.info(f"🧪 テストモード: {test_url} のみチェック")
-            items = [{"row_num": 0, "url": test_url, "source": "テスト", "ebay_id": ""}]
+            # 台帳からebay_id/prev_statusを取得
+            test_item = {"row_num": 0, "url": test_url, "source": "テスト", "ebay_id": "", "prev_status": ""}
+            if daichou:
+                all_urls = daichou.col_values(COL_URL)
+                logger.info(f"  台帳URL検索: {len(all_urls)}件中からtest_url検索")
+                for idx, u in enumerate(all_urls):
+                    if u and u.strip() == test_url:
+                        row_num = idx + 1
+                        test_item["row_num"] = row_num
+                        try:
+                            raw_id = daichou.cell(row_num, COL_EBAY_ID).value
+                            test_item["ebay_id"] = str(int(raw_id)) if raw_id else ""
+                        except Exception:
+                            pass
+                        try:
+                            raw_ps = daichou.cell(row_num, COL_PREV_STATUS).value
+                            test_item["prev_status"] = str(raw_ps).strip() if raw_ps else ""
+                        except Exception:
+                            pass
+                        try:
+                            test_item["source"] = daichou.cell(row_num, COL_SOURCE).value or "テスト"
+                        except Exception:
+                            pass
+                        logger.info(f"  台帳 行{row_num}: ebay_id={test_item['ebay_id']}, prev_status={test_item['prev_status']}")
+                        break
+            items = [test_item]
         else:
             items = get_urls_from_sheet(daichou)
 
