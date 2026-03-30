@@ -1734,10 +1734,29 @@ def check_ebay_unlisted_items():
         logger.info("✅ 未登録商品なし")
         return
 
+    # ④ スプレッドシートに書き込み（eBay未登録チェックタブ）
+    try:
+        sheet_name = "eBay未登録チェック"
+        sh = daichou.spreadsheet
+        try:
+            ws_check = sh.worksheet(sheet_name)
+            ws_check.clear()
+        except Exception:
+            ws_check = sh.add_worksheet(title=sheet_name, rows=1000, cols=5)
+        header_row = ["No.", "商品名", "eBay ItemID", "eBay URL", "チェック日時"]
+        rows = [header_row]
+        checked_at = datetime.now().strftime("%Y/%m/%d %H:%M")
+        for idx, (item_id, title) in enumerate(sorted(missing.items()), start=1):
+            rows.append([idx, title, item_id, f"https://www.ebay.com/itm/{item_id}", checked_at])
+        ws_check.update(rows, value_input_option="USER_ENTERED")
+        logger.info(f"スプレッドシート書き込み完了: {len(missing)}件")
+    except Exception as e:
+        logger.error(f"スプレッドシート書き込み失敗: {e}")
+
+    # ⑤ LINE通知（10件ずつ分割送信）
     logger.warning(f"⚠️ スプレッドシート未登録のeBay商品: {len(missing)}件")
     header = f"⚠️ eBay出品中だがスプレッドシート未登録の商品が{len(missing)}件あります"
     send_line_notification(header)
-
     chunk_size = 10
     sorted_items = sorted(missing.items())
     for i in range(0, len(sorted_items), chunk_size):
