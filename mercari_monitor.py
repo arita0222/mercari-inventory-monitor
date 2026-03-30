@@ -1649,7 +1649,7 @@ def check_ebay_unlisted_items():
         return
 
     # ① eBay出品中（アクティブのみ）の全ItemIDを取得（GetMyeBaySelling）
-    ebay_ids = set()
+    ebay_ids = {}
     page = 1
     while True:
         xml_request = f"""<?xml version="1.0" encoding="utf-8"?>
@@ -1694,13 +1694,18 @@ def check_ebay_unlisted_items():
             logger.error(f"GetMyeBaySelling失敗 page={page}: {error_match.group(1) if error_match else text[:200]}")
             break
 
-        ids_on_page = re.findall(r"<ItemID>(\d+)</ItemID>", text)
-        for id_ in ids_on_page:
-            ebay_ids.add(id_)
+        items_on_page = re.findall(r"<ItemID>(\d+)</ItemID>.*?<Title>(.*?)</Title>", text, re.DOTALL)
+        for item_id, title in items_on_page:
+            ebay_ids[item_id] = title
+        
+        # タイトルが取れなかったIDも念のため追加
+        for item_id in re.findall(r"<ItemID>(\d+)</ItemID>", text):
+            if item_id not in ebay_ids:
+                ebay_ids[item_id] = ""
 
         total_pages_match = re.search(r"<TotalNumberOfPages>(\d+)</TotalNumberOfPages>", text)
         total_pages = int(total_pages_match.group(1)) if total_pages_match else 1
-        logger.info(f"GetMyeBaySelling page {page}/{total_pages}: {len(ids_on_page)}件取得")
+        logger.info(f"GetMyeBaySelling page {page}/{total_pages}: {len(items_on_page)}件取得")
 
         if page >= total_pages:
             break
@@ -1724,7 +1729,7 @@ def check_ebay_unlisted_items():
     logger.info(f"スプレッドシート登録数: {len(sheet_ids)}件")
 
     # ③ 照合
-    missing = ebay_ids - sheet_ids
+    missing = {k: v for k, v in ebay_ids.items() if k not in sheet_ids}
     if not missing:
         logger.info("✅ 未登録商品なし")
         return
