@@ -1632,6 +1632,113 @@ def send_email(changed_items, ebay_results=None):
 
 
 # ============================================================
+# eBay未登録商品チェック
+# ============================================================
+def check_ebay_unlisted_items():
+    """
+    eBayに出品中だがスプレッドシートF列に存在しないItemIDを検出してLINE通知する
+    """
+    import re
+    from datetime import datetime, timedelta
+
+    logger.info("=== eBay未登録商品チェック開始 ===")
+
+    if not EBAY_AUTH_TOKEN:
+        logger.error("EBAY_AUTH_TOKENが未設定のためスキップ")
+        return
+
+    # ① eBay出品中の全ItemIDを取得（GetSellerList）
+    ebay_ids = set()
+    page = 1
+    while True:
+        now = datetime.utcnow()
+        start_from = (now - timedelta(days=120)).strftime('%Y-%m-%dT00:00:00.000Z')
+        start_to = now.strftime('%Y-%m-%dT23:59:59.000Z')
+
+        xml_request = f"""<?xml version="1.0" encoding="utf-8"?>
+<GetSellerListRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+    <RequesterCredentials>
+        <eBayAuthToken>{EBAY_AUTH_TOKEN}</eBayAuthToken>
+    </RequesterCredentials>
+    <StartTimeFrom>{start_from}</StartTimeFrom>
+    <StartTimeTo>{start_to}</StartTimeTo>
+    <Pagination>
+        <EntriesPerPage>200</EntriesPerPage>
+        <PageNumber>{page}</PageNumber>
+    </Pagination>
+    <GranularityLevel>Coarse</GranularityLevel>
+    <ActiveList>true</ActiveList>
+</GetSellerListRequest>"""
+
+        headers = {
+            "X-EBAY-API-COMPATIBILITY-LEVEL": "1209",
+            "X-EBAY-API-CALL-NAME": "GetSellerList",
+            "X-EBAY-API-SITEID": "0",
+            "X-EBAY-API-APP-NAME": EBAY_APP_ID,
+            "X-EBAY-API-DEV-NAME": EBAY_DEV_ID,
+            "X-EBAY-API-CERT-NAME": EBAY_CERT_ID,
+            "Content-Type": "text/xml;charset=UTF-8",
+        }
+
+        try:
+            response = requests.post(EBAY_API_URL, headers=headers, data=xml_request.encode("utf-8"), timeout=30)
+            text = response.text
+        except Exception as e:
+            logger.error(f"GetSellerList通信エラー: {e}")
+            break
+
+        if "<Ack>Success</Ack>" not in text and "<Ack>Warning</Ack>" not in text:
+            error_match = re.search(r"<LongMessage>(.*?)</LongMessage>", text)
+            logger.error(f"GetSellerList失敗 page={page}: {error_match.group(1) if error_match else text[:200]}")
+            break
+
+        ids_on_page = re.findall(r"<ItemID>(\d+)</ItemID>", text)
+        for id_ in ids_on_page:
+            ebay_ids.add(id_)
+
+        total_pages_match = re.search(r"<TotalNumberOfPages>(\d+)</TotalNumberOfPages>", text)
+        total_pages = int(total_pages_match.group(1)) if total_pages_match else 1
+        logger.info(f"GetSellerList page {page}/{total_pages}: {len(ids_on_page)}件取得")
+
+        if page >= total_pages:
+            break
+        page += 1
+
+    logger.info(f"eBay出品中: 合計{len(ebay_ids)}件")
+
+    # ② スプレッドシートF列のItemIDを取得
+    sheet_ids = set()
+    try:
+        gc = get_gspread_client()
+        sh = gc.open_by_key(SPREADSHEET_ID)
+        ws = sh.sheet1
+        col_f = ws.col_values(6)  # F列
+        for v in col_f[1:]:      # 1行目ヘッダースキップ
+            v = str(v).strip()
+            if v:
+                sheet_ids.add(v)
+    except Exception as e:
+        logger.error(f"スプレッドシート読み込み失敗: {e}")
+        return
+
+    logger.info(f"スプレッドシート登録数: {len(sheet_ids)}件")
+
+    # ③ 照合
+    missing = ebay_ids - sheet_ids
+    if not missing:
+        logger.info("✅ 未登録商品なし")
+        return
+
+    # ④ LINE通知
+    logger.warning(f"⚠️ スプレッドシート未登録のeBay商品: {len(missing)}件")
+    lines = [f"⚠️ eBay出品中だがスプレッドシート未登録の商品が{len(missing)}件あります\n"]
+    for item_id in sorted(missing):
+        lines.append(f"・https://www.ebay.com/itm/{item_id}")
+    message = "\n".join(lines)
+    send_line_notification(message)
+    logger.info("LINE通知送信完了")
+
+# ============================================================
 # メイン処理
 # ============================================================
 
