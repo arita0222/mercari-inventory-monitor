@@ -25,6 +25,8 @@ GitHub Actions + Python + Selenium
 
 import os
 import sys
+import re
+import requests
 import json
 import time
 import logging
@@ -1638,7 +1640,6 @@ def check_ebay_unlisted_items():
     """
     eBayに出品中だがスプレッドシートF列に存在しないItemIDを検出してLINE通知する
     """
-    import re
     from datetime import datetime, timedelta
 
     logger.info("=== eBay未登録商品チェック開始 ===")
@@ -1709,10 +1710,8 @@ def check_ebay_unlisted_items():
     # ② スプレッドシートF列のItemIDを取得
     sheet_ids = set()
     try:
-        gc = get_gspread_client()
-        sh = gc.open_by_key(SPREADSHEET_ID)
-        ws = sh.sheet1
-        col_f = ws.col_values(6)  # F列
+        client, daichou, log_sheet, settings_sheet = init_gspread()
+        col_f = daichou.col_values(6)  # F列
         for v in col_f[1:]:      # 1行目ヘッダースキップ
             v = str(v).strip()
             if v:
