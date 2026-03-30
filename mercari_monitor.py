@@ -1648,32 +1648,33 @@ def check_ebay_unlisted_items():
         logger.error("EBAY_AUTH_TOKENが未設定のためスキップ")
         return
 
-    # ① eBay出品中の全ItemIDを取得（GetSellerList）
+    # ① eBay出品中（アクティブのみ）の全ItemIDを取得（GetMyeBaySelling）
     ebay_ids = set()
     page = 1
     while True:
-        now = datetime.utcnow()
-        start_from = (now - timedelta(days=120)).strftime('%Y-%m-%dT00:00:00.000Z')
-        start_to = now.strftime('%Y-%m-%dT23:59:59.000Z')
-
         xml_request = f"""<?xml version="1.0" encoding="utf-8"?>
-<GetSellerListRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+<GetMyeBaySellingRequest xmlns="urn:ebay:apis:eBLBaseComponents">
     <RequesterCredentials>
         <eBayAuthToken>{EBAY_AUTH_TOKEN}</eBayAuthToken>
     </RequesterCredentials>
-    <StartTimeFrom>{start_from}</StartTimeFrom>
-    <StartTimeTo>{start_to}</StartTimeTo>
-    <Pagination>
-        <EntriesPerPage>200</EntriesPerPage>
-        <PageNumber>{page}</PageNumber>
-    </Pagination>
-    <GranularityLevel>Coarse</GranularityLevel>
-    <ActiveList>true</ActiveList>
-</GetSellerListRequest>"""
+    <ActiveList>
+        <Include>true</Include>
+        <Pagination>
+            <EntriesPerPage>200</EntriesPerPage>
+            <PageNumber>{page}</PageNumber>
+        </Pagination>
+    </ActiveList>
+    <SoldList>
+        <Include>false</Include>
+    </SoldList>
+    <UnsoldList>
+        <Include>false</Include>
+    </UnsoldList>
+</GetMyeBaySellingRequest>"""
 
         headers = {
             "X-EBAY-API-COMPATIBILITY-LEVEL": "1209",
-            "X-EBAY-API-CALL-NAME": "GetSellerList",
+            "X-EBAY-API-CALL-NAME": "GetMyeBaySelling",
             "X-EBAY-API-SITEID": "0",
             "X-EBAY-API-APP-NAME": EBAY_APP_ID,
             "X-EBAY-API-DEV-NAME": EBAY_DEV_ID,
@@ -1685,12 +1686,12 @@ def check_ebay_unlisted_items():
             response = requests.post(EBAY_API_URL, headers=headers, data=xml_request.encode("utf-8"), timeout=30)
             text = response.text
         except Exception as e:
-            logger.error(f"GetSellerList通信エラー: {e}")
+            logger.error(f"GetMyeBaySelling通信エラー: {e}")
             break
 
         if "<Ack>Success</Ack>" not in text and "<Ack>Warning</Ack>" not in text:
             error_match = re.search(r"<LongMessage>(.*?)</LongMessage>", text)
-            logger.error(f"GetSellerList失敗 page={page}: {error_match.group(1) if error_match else text[:200]}")
+            logger.error(f"GetMyeBaySelling失敗 page={page}: {error_match.group(1) if error_match else text[:200]}")
             break
 
         ids_on_page = re.findall(r"<ItemID>(\d+)</ItemID>", text)
@@ -1699,7 +1700,7 @@ def check_ebay_unlisted_items():
 
         total_pages_match = re.search(r"<TotalNumberOfPages>(\d+)</TotalNumberOfPages>", text)
         total_pages = int(total_pages_match.group(1)) if total_pages_match else 1
-        logger.info(f"GetSellerList page {page}/{total_pages}: {len(ids_on_page)}件取得")
+        logger.info(f"GetMyeBaySelling page {page}/{total_pages}: {len(ids_on_page)}件取得")
 
         if page >= total_pages:
             break
