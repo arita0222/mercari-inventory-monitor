@@ -958,9 +958,10 @@ def get_urls_from_sheet(daichou):
                     source = daichou.cell(row_num, COL_SOURCE).value or ""
                 except Exception:
                     source = ""
-                # E列（eBay ItemID）も取得
+                # F列（eBay ItemID）も取得
                 try:
-                    ebay_id = daichou.cell(row_num, COL_EBAY_ID).value or ""
+                    ebay_id_raw = daichou.cell(row_num, COL_EBAY_ID).value
+                    ebay_id = str(int(ebay_id_raw)) if ebay_id_raw else ""
                 except Exception:
                     ebay_id = ""
                 # O列（前回ステータス）も取得
