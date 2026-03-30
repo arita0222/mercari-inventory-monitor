@@ -1044,10 +1044,7 @@ def update_daichou(daichou, row_num, result):
             status_changed = True  # 売り切れ→販売中：eBay再出品トリガー
 
         # --- 各列を更新 ---
-        # C: 商品名（販売中の場合のみ上書き。売り切れ・エラー時は保持）
-        item_name = result.get("name", "")
-        if item_name and new_status == "販売中":
-            daichou.update_cell(row_num, COL_NAME, item_name[:100])
+        # C: 商品名は書き換えない（手動入力を保持）
 
         # G: 前回ステータス → 今回のステータスで上書き
         daichou.update_cell(row_num, COL_PREV_STATUS, new_status)
