@@ -1731,20 +1731,20 @@ def main():
                     if result["ebay_id"]:
                         ebay_stop_items.append(result)
                         logger.info(f"  → eBay停止対象: ebay_id={result['ebay_id']}")
-                    # 通知は初回のみ（販売中→売り切れ）
+                    # 通知は販売中→売り切れの時だけ
                     logger.info(f"  → prev_status='{result['prev_status']}', ebay_id={result['ebay_id']}")
-                    if result["prev_status"] != "売り切れ":
+                    if result["prev_status"] == "販売中":
                         changed_items.append(result)
-                        logger.info(f"  → 初回売り切れ通知対象")
+                        logger.info(f"  → 販売中→売り切れ: 通知対象")
                     else:
-                        logger.info(f"  → 既に売り切れ通知済み、スキップ")
+                        logger.info(f"  → prev_status='{result['prev_status']}': 通知スキップ")
             else:
                 result["ebay_id"] = item.get("ebay_id", "")
                 result["prev_status"] = item.get("prev_status", "")
                 if result["status"] == "売り切れ":
                     if result["ebay_id"]:
                         ebay_stop_items.append(result)
-                    if result.get("prev_status") != "売り切れ":
+                    if result.get("prev_status") == "販売中":
                         changed_items.append(result)
 
             # チェックログに追記（売り切れのみ）
