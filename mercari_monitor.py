@@ -1734,16 +1734,21 @@ def check_ebay_unlisted_items():
         logger.info("✅ 未登録商品なし")
         return
 
-    # ④ LINE通知
     logger.warning(f"⚠️ スプレッドシート未登録のeBay商品: {len(missing)}件")
-    lines = [f"⚠️ eBay出品中だがスプレッドシート未登録の商品が{len(missing)}件あります\n"]
-    for item_id in sorted(missing):
-        lines.append(f"・https://www.ebay.com/itm/{item_id}")
-    message = "\n".join(lines)
-    send_line_notification(message)
-    logger.info("LINE通知送信完了")
+    header = f"⚠️ eBay出品中だがスプレッドシート未登録の商品が{len(missing)}件あります"
+    send_line_notification(header)
 
-# ============================================================
+    chunk_size = 10
+    sorted_items = sorted(missing.items())
+    for i in range(0, len(sorted_items), chunk_size):
+        chunk = sorted_items[i:i+chunk_size]
+        lines = []
+        for j, (item_id, title) in enumerate(chunk, start=i+1):
+            lines.append(f"{j}. {title}")
+            lines.append(f"   ID: {item_id}")
+            lines.append(f"   https://www.ebay.com/itm/{item_id}")
+        send_line_notification("\n".join(lines))
+    logger.info("LINE通知送信完了")
 # メイン処理
 # ============================================================
 
