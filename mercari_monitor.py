@@ -371,8 +371,14 @@ def check_mercari_status(driver, url):
                     (By.CSS_SELECTOR, '[data-testid="checkout-button"]')
                 )
             )
-            btn_text = checkout_btn.text.strip()
-            btn_name = checkout_btn.get_attribute("name") or ""
+            try:
+                btn_text = checkout_btn.text.strip()
+                btn_name = checkout_btn.get_attribute("name") or ""
+            except Exception:
+                # stale element対策: 再取得
+                checkout_btn = driver.find_element(By.CSS_SELECTOR, '[data-testid="checkout-button"]')
+                btn_text = checkout_btn.text.strip()
+                btn_name = checkout_btn.get_attribute("name") or ""
 
             logger.info(f"checkout-button: text='{btn_text}', name='{btn_name}'")
 
@@ -502,9 +508,18 @@ def check_rakuma_status(driver, url):
             By.CSS_SELECTOR, '.type-modal__contents--button--sold'
         )
         if sold_badges:
+            try:
+                badge_text = sold_badges[0].text
+            except Exception:
+                # stale element対策: 再取得
+                try:
+                    sold_badges = driver.find_elements(By.CSS_SELECTOR, '.type-modal__contents--button--sold')
+                    badge_text = sold_badges[0].text if sold_badges else "SOLD OUT"
+                except Exception:
+                    badge_text = "SOLD OUT"
             result["status"] = "売り切れ"
             result["method"] = "sold-badge"
-            result["detail"] = f"SOLD OUTバッジ検出: '{sold_badges[0].text}'"
+            result["detail"] = f"SOLD OUTバッジ検出: '{badge_text}'"
             logger.info(f"✅ 方法1で判定: 売り切れ（SOLD OUTバッジ）")
             return result
 
@@ -1197,6 +1212,10 @@ def get_ebay_item_price(item_id):
                 error_match = re.search(r"<LongMessage>(.*?)</LongMessage>", text)
                 error_msg = error_match.group(1) if error_match else "不明"
                 logger.error(f"eBay GetItem失敗: ItemID={item_id}, {error_msg}")
+                # 削除済み・アクセス不可のItemIDは以降スキップ
+                if "cannot be accessed" in error_msg or "deleted" in error_msg.lower() or "not the seller" in error_msg.lower():
+                    logger.warning(f"  → 削除済みまたは無効なItemID: {item_id} スキップします")
+                    return None, "INVALID"
                 return None, None
         else:
             logger.error(f"eBay GetItem HTTPエラー: {response.status_code}")
@@ -1226,6 +1245,10 @@ def update_ebay_prices(daichou, items):
             continue
 
         price, listing_status = get_ebay_item_price(ebay_id)
+        if listing_status == "INVALID":
+            logger.warning(f"  行{row_num}: ItemID={ebay_id} は無効のためスキップ")
+            time.sleep(0.5)
+            continue
         if price is not None:
             try:
                 # 現在のG列の値を取得
