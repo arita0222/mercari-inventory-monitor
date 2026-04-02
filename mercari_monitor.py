@@ -668,6 +668,13 @@ def check_yahoo_fleamarket_status(driver, url):
         # ============================================
         # 判定方法1: 購入ボタンの有無
         # ============================================
+        try:
+            WebDriverWait(driver, PAGE_LOAD_WAIT).until(
+                lambda d: d.find_elements(By.CSS_SELECTOR, '#item_buy_button') or
+                          "コピーして出品する" in d.find_element(By.TAG_NAME, 'body').text
+            )
+        except Exception:
+            pass
         buy_buttons = driver.find_elements(By.CSS_SELECTOR, '#item_buy_button')
         if buy_buttons:
             btn_text = buy_buttons[0].text.strip()
