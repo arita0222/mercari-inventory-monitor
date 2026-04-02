@@ -1897,6 +1897,16 @@ def main():
                         logger.info(f"  → 販売中→売り切れ: 通知対象")
                     else:
                         logger.info(f"  → prev_status='{result['prev_status']}': 通知スキップ")
+                # 利益マイナスチェック（販売中の時のみ）
+                elif result["status"] == "販売中" and result["ebay_id"]:
+                    try:
+                        profit_val = daichou.cell(item["row_num"], COL_PROFIT).value
+                        profit = int(float(str(profit_val).replace(",", ""))) if profit_val else None
+                        if profit is not None and profit < 0:
+                            ebay_stop_items.append(result)
+                            logger.info(f"  → 利益マイナス({profit}円): eBay停止対象")
+                    except Exception as e:
+                        logger.warning(f"  → 利益取得失敗: {e}")
             else:
                 result["ebay_id"] = item.get("ebay_id", "")
                 result["prev_status"] = item.get("prev_status", "")
