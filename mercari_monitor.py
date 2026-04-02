@@ -376,9 +376,13 @@ def check_mercari_status(driver, url):
                 btn_name = checkout_btn.get_attribute("name") or ""
             except Exception:
                 # stale element対策: 再取得
-                checkout_btn = driver.find_element(By.CSS_SELECTOR, '[data-testid="checkout-button"]')
-                btn_text = checkout_btn.text.strip()
-                btn_name = checkout_btn.get_attribute("name") or ""
+                try:
+                    checkout_btn = driver.find_element(By.CSS_SELECTOR, '[data-testid="checkout-button"]')
+                    btn_text = checkout_btn.text.strip()
+                    btn_name = checkout_btn.get_attribute("name") or ""
+                except Exception:
+                    btn_text = ""
+                    btn_name = ""
 
             logger.info(f"checkout-button: text='{btn_text}', name='{btn_name}'")
 
@@ -1908,7 +1912,7 @@ def main():
                 elif result["status"] == "販売中" and result["ebay_id"]:
                     try:
                         profit_val = daichou.cell(item["row_num"], COL_PROFIT).value
-                        profit = int(float(str(profit_val).replace(",", ""))) if profit_val else None
+                        profit = int(float(str(profit_val).replace(",", "").replace("¥", "").replace("\u00a5", "").strip())) if profit_val else None
                         if profit is not None and profit < 0:
                             ebay_stop_items.append(result)
                             logger.info(f"  → 利益マイナス({profit}円): eBay停止対象")
