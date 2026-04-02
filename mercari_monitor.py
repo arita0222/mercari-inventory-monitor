@@ -366,11 +366,10 @@ def check_mercari_status(driver, url):
 
         # 判定方法2: checkout-button のテキスト
         try:
-            checkout_btn = WebDriverWait(driver, ELEMENT_WAIT).until(
-                EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, '[data-testid="checkout-button"]')
-                )
+            btns = WebDriverWait(driver, ELEMENT_WAIT).until(
+                lambda d: d.find_elements(By.CSS_SELECTOR, '[data-testid="checkout-button"]')
             )
+            checkout_btn = btns[0]
             try:
                 btn_text = checkout_btn.text.strip()
                 btn_name = checkout_btn.get_attribute("name") or ""
