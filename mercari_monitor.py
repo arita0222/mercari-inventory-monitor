@@ -138,6 +138,8 @@ def detect_platform(url):
         return "yahuoku"
     elif "fril.jp" in url or "rakuma" in url:
         return "rakuma"
+    elif "store.shopping.yahoo.co.jp" in url or "shopping.yahoo.co.jp" in url:
+        return "yahoo_shopping"
     elif "paypayfleamarket" in url or "yahoo" in url:
         return "yahoo_fleamarket"
     elif "amazon.co.jp" in url:
@@ -722,6 +724,103 @@ def check_yahoo_fleamarket_status(driver, url):
 # 統合チェック関数
 # ============================================================
 
+def check_yahoo_shopping_status(driver, url):
+    """
+    Yahoo!ショッピングの商品ステータスを判定
+    【判定ロジック】
+    1. カートボタンが disabled + 「在庫がありません」テキスト → 売り切れ
+    2. カートボタンが有効 + 「カートに入れる」テキスト → 販売中
+    3. ページが存在しない → 売り切れ
+    """
+    result = {
+        "url": url,
+        "platform": "yahoo_shopping",
+        "status": "エラー",
+        "name": "",
+        "price": None,
+        "method": "",
+        "detail": "",
+    }
+    try:
+        logger.info(f"ページ読み込み中: {url}")
+        driver.get(url)
+        WebDriverWait(driver, PAGE_LOAD_WAIT).until(
+            lambda d: d.execute_script("return document.readyState") == "complete"
+        )
+        time.sleep(3)
+
+        # 商品名取得
+        try:
+            title_el = driver.find_element(By.CSS_SELECTOR, 'h1')
+            result["name"] = title_el.text.strip()[:100]
+        except NoSuchElementException:
+            result["name"] = driver.title[:100]
+        logger.info(f"商品名: {result['name']}")
+
+        # 価格取得
+        try:
+            price_el = driver.find_element(By.CSS_SELECTOR, 'meta[property="product:price:amount"]')
+            price_text = price_el.get_attribute("content").replace(",", "").strip()
+            result["price"] = int(float(price_text)) if price_text else None
+        except Exception:
+            try:
+                price_el = driver.find_element(By.CSS_SELECTOR, '[class*="price"] [class*="current"], [class*="Price"] span')
+                price_text = price_el.text.replace("円", "").replace(",", "").replace("¥", "").strip()
+                result["price"] = int(price_text) if price_text.isdigit() else None
+            except Exception:
+                result["price"] = None
+        logger.info(f"価格: {result['price']}円")
+
+        # ページ存在チェック
+        page_src = driver.page_source
+        if "ページが見つかりません" in page_src or "お探しのページは見つかりません" in page_src:
+            result["status"] = "売り切れ"
+            result["method"] = "yahoo-shopping-page-not-found"
+            result["detail"] = "ページが存在しない → 売り切れ"
+            logger.info("✅ Yahoo!ショッピング判定: 売り切れ（ページ削除）")
+            return result
+
+        # カートボタン判定
+        try:
+            cart_btn = driver.find_element(By.CSS_SELECTOR, 'button[data-cl-params*="addcart"], button[data-cl-params*="addmdl"]')
+            btn_text = cart_btn.text.strip()
+            is_disabled = cart_btn.get_attribute("disabled") is not None
+
+            if is_disabled or "在庫がありません" in btn_text:
+                result["status"] = "売り切れ"
+                result["method"] = "yahoo-shopping-no-stock"
+                result["detail"] = f"カートボタン無効（{btn_text}） → 売り切れ"
+                logger.info(f"✅ Yahoo!ショッピング判定: 売り切れ（{btn_text}）")
+            elif "カートに入れる" in btn_text:
+                result["status"] = "販売中"
+                result["method"] = "yahoo-shopping-cart-button"
+                result["detail"] = "カートに入れるボタン検出 → 販売中"
+                logger.info("✅ Yahoo!ショッピング判定: 販売中（カートボタン検出）")
+            else:
+                result["status"] = "不明"
+                result["method"] = "yahoo-shopping-unknown-button"
+                result["detail"] = f"カートボタンのテキスト不明: {btn_text}"
+                logger.info(f"Yahoo!ショッピング判定: 不明（ボタンテキスト: {btn_text}）")
+        except NoSuchElementException:
+            # カートボタンが見つからない場合
+            if "売り切れ" in page_src or "在庫切れ" in page_src or "品切れ" in page_src:
+                result["status"] = "売り切れ"
+                result["method"] = "yahoo-shopping-text-soldout"
+                result["detail"] = "ページ内に売り切れテキスト検出 → 売り切れ"
+                logger.info("✅ Yahoo!ショッピング判定: 売り切れ（テキスト検出）")
+            else:
+                result["status"] = "不明"
+                result["method"] = "yahoo-shopping-no-button"
+                result["detail"] = "カートボタンが見つからない → 不明"
+                logger.info("Yahoo!ショッピング判定: 不明（ボタンなし）")
+
+    except Exception as e:
+        result["detail"] = str(e)[:100]
+        logger.error(f"Yahoo!ショッピングエラー: {e}")
+
+    return result
+
+
 def check_amazon_status(driver, url):
     """
     Amazonの商品ステータスを判定
@@ -816,6 +915,8 @@ def check_item_status(driver, url):
         return check_yahuoku_status(driver, url)
     elif platform == "amazon":
         return check_amazon_status(driver, url)
+    elif platform == "yahoo_shopping":
+        return check_yahoo_shopping_status(driver, url)
     else:
         return {
             "url": url,
