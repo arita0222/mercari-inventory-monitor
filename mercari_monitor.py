@@ -1068,45 +1068,51 @@ def read_settings(settings_sheet):
 def get_urls_from_sheet(daichou):
     """
     仕入れ台帳シートから商品URLを取得
-    D列（仕入れ元URL）を読み込み、行番号とセットで返す
+    get_all_values() で一括読み込み（個別cell()呼び出しによるレート制限を回避）
     """
     if not daichou:
         return []
 
     try:
-        # D列（URL列）の全データを取得
-        urls_col = daichou.col_values(COL_URL)
-
+        all_rows = daichou.get_all_values()
         items = []
-        for i, url in enumerate(urls_col):
+
+        for i, row in enumerate(all_rows):
             row_num = i + 1  # 1始まり
             if row_num == 1:
                 continue  # ヘッダー行をスキップ
-            url = url.strip() if url else ""
-            if url.startswith("http"):
-                # B列（仕入れ先）も取得
-                try:
-                    source = daichou.cell(row_num, COL_SOURCE).value or ""
-                except Exception:
-                    source = ""
-                # F列（eBay ItemID）も取得
-                try:
-                    ebay_id_raw = daichou.cell(row_num, COL_EBAY_ID).value
-                    ebay_id = str(int(ebay_id_raw)) if ebay_id_raw else ""
-                except Exception:
-                    ebay_id = ""
-                # O列（前回ステータス）も取得
-                try:
-                    prev_status = daichou.cell(row_num, COL_PREV_STATUS).value or ""
-                except Exception:
-                    prev_status = ""
-                items.append({
-                    "row_num": row_num,
-                    "url": url,
-                    "source": source,
-                    "ebay_id": ebay_id.strip(),
-                    "prev_status": prev_status,
-                })
+
+            # 列数が足りない場合はパディング
+            while len(row) < COL_PREV_STATUS:
+                row.append("")
+
+            url = row[COL_URL - 1].strip() if row[COL_URL - 1] else ""
+            if not url.startswith("http"):
+                continue
+
+            # B列: 仕入れ先
+            source = row[COL_SOURCE - 1] if len(row) >= COL_SOURCE else ""
+
+            # F列: eBay ItemID
+            ebay_id_raw = row[COL_EBAY_ID - 1].strip() if len(row) >= COL_EBAY_ID else ""
+            try:
+                ebay_id = str(int(float(ebay_id_raw))) if ebay_id_raw else ""
+            except (ValueError, TypeError):
+                ebay_id = ""
+                logger.warning(f"  行{row_num} ebay_id変換失敗: \'{ebay_id_raw}\'")
+
+            # Q列: 前回ステータス
+            prev_status = row[COL_PREV_STATUS - 1] if len(row) >= COL_PREV_STATUS else ""
+
+            items.append({
+                "row_num": row_num,
+                "url": url,
+                "source": source,
+                "ebay_id": ebay_id.strip(),
+                "prev_status": prev_status,
+            })
+
+            logger.info(f"  行{row_num}: ebay_id=\'{ebay_id}\', prev=\'{prev_status}\'")
 
         logger.info(f"仕入れ台帳から {len(items)} 件のURLを取得")
         return items
@@ -1943,7 +1949,7 @@ def main():
                         test_item["row_num"] = row_num
                         try:
                             raw_id = daichou.cell(row_num, COL_EBAY_ID).value
-                            test_item["ebay_id"] = str(int(raw_id)) if raw_id else ""
+                            test_item["ebay_id"] = str(int(float(raw_id))) if raw_id else ""
                         except Exception:
                             pass
                         try:
