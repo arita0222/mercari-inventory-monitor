@@ -54,3 +54,17 @@ jobs:
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
           TEST_URL: ${{ github.event.inputs.test_url }}
         run: python mercari_monitor.py
+
+  keepalive:
+    name: 自動停止防止（keepalive）
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: スケジュール実行を再有効化して60日カウントをリセット
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X PUT "repos/${{ github.repository }}/actions/workflows/mercari-monitor.yml/enable"
+          gh api -X PUT "repos/${{ github.repository }}/actions/workflows/ebay_check.yml/enable"
+          echo "✅ keepalive完了: 両ワークフローの自動停止タイマーをリセットしました"
