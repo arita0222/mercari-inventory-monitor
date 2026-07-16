@@ -1170,6 +1170,9 @@ def update_daichou(daichou, row_num, result):
             # エラーや判定不能
             unknown_count += 1
 
+        # 呼び出し元（eBay停止判定）で使えるように連続回数を持たせる
+        result["unknown_count"] = unknown_count
+
         # --- 状態変化の判定 ---
         # 販売中→売り切れの場合に通知
         # eBay停止は売り切れのたびに毎回実行（停止失敗時のリカバリのため）
@@ -1664,6 +1667,8 @@ def build_notification_text(changed_items, ebay_results=None):
         lines.append("━━━━━━━━━━━━━━━━━━━━")
         lines.append(f"商品名: {item['name']}")
         lines.append(f"仕入れ先: {platform}")
+        if item.get("status") == "不明":
+            lines.append("⚠️ ステータス: 不明が3回連続（判定不能のため安全側でeBay停止・要手動確認）")
         lines.append(f"URL: {item['url']}")
         if ebay_id:
             lines.append(f"eBay ItemID: {ebay_id}")
@@ -2024,6 +2029,14 @@ def main():
                             logger.info(f"  → 利益マイナス({profit}円): eBay停止対象")
                     except Exception as e:
                         logger.warning(f"  → 利益取得失敗: {e}")
+                # 不明が3回連続 → 実は売り切れの可能性があるため安全側でeBay停止
+                elif result["status"] == "不明" and result.get("unknown_count", 0) >= 3 and result["ebay_id"]:
+                    ebay_stop_items.append(result)
+                    logger.info(f"  → 不明{result['unknown_count']}回連続: eBay停止対象（要手動確認）")
+                    # 通知はちょうど3回目のときだけ（毎回通知でうるさくなるのを防ぐ）
+                    if result.get("unknown_count") == 3:
+                        changed_items.append(result)
+                        logger.info("  → 不明3回目: 通知対象")
             else:
                 result["ebay_id"] = item.get("ebay_id", "")
                 result["prev_status"] = item.get("prev_status", "")
